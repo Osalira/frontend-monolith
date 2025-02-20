@@ -245,10 +245,23 @@ const Trading: React.FC = () => {
     field: keyof typeof orderData,
     value: string | number | boolean
   ) => {
-    setOrderData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
+    setOrderData(prev => {
+      const updates: Partial<typeof orderData> = {
+        [field]: value
+      };
+      
+      // If changing between buy/sell, automatically set the correct order type
+      if (field === 'is_buy') {
+        updates.order_type = value ? 'MARKET' : 'LIMIT';
+        // Clear price when switching to market order (buy)
+        if (value) {
+          updates.price = undefined;
+        }
+      }
+      
+      return { ...prev, ...updates };
+    });
+    
     // Clear error when user changes value
     if (errors[field]) {
       setErrors(prev => ({
@@ -313,21 +326,8 @@ const Trading: React.FC = () => {
                     onChange={(value: string) => handleChange('is_buy', value === 'BUY')}
                   >
                     <HStack spacing={4}>
-                      <Radio value="BUY" data-cy="order-type-buy">Buy</Radio>
-                      <Radio value="SELL" data-cy="order-type-sell">Sell</Radio>
-                    </HStack>
-                  </RadioGroup>
-                </FormControl>
-
-                <FormControl>
-                  <FormLabel>Order Method</FormLabel>
-                  <RadioGroup
-                    value={orderData.order_type}
-                    onChange={(value: string) => handleChange('order_type', value)}
-                  >
-                    <HStack spacing={4}>
-                      <Radio value="MARKET" data-cy="order-method-market">Market</Radio>
-                      <Radio value="LIMIT" data-cy="order-method-limit">Limit</Radio>
+                      <Radio value="BUY" data-cy="order-type-buy">Buy (Market Order)</Radio>
+                      <Radio value="SELL" data-cy="order-type-sell">Sell (Limit Order)</Radio>
                     </HStack>
                   </RadioGroup>
                 </FormControl>
@@ -348,9 +348,9 @@ const Trading: React.FC = () => {
                   <FormErrorMessage>{errors.quantity}</FormErrorMessage>
                 </FormControl>
 
-                {orderData.order_type === 'LIMIT' && (
+                {!orderData.is_buy && (  // Only show price input for sell orders (limit orders)
                   <FormControl isInvalid={!!errors.price}>
-                    <FormLabel>Price</FormLabel>
+                    <FormLabel>Limit Price</FormLabel>
                     <NumberInput
                       min={0.01}
                       precision={2}
