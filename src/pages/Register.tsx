@@ -12,6 +12,9 @@ import {
   Link,
   useToast,
   FormErrorMessage,
+  RadioGroup,
+  Radio,
+  HStack,
 } from '@chakra-ui/react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import { useMutation } from 'react-query';
@@ -22,6 +25,7 @@ const Register: React.FC = () => {
     user_name: '',
     password: '',
     name: '',
+    account_type: 'user' as 'user' | 'company'
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
   const toast = useToast();
@@ -95,6 +99,20 @@ const Register: React.FC = () => {
         
         <Box as="form" w="100%" onSubmit={handleSubmit}>
           <VStack spacing={4}>
+            <FormControl>
+              <FormLabel>Account Type</FormLabel>
+              <RadioGroup
+                value={formData.account_type}
+                onChange={(value: 'user' | 'company') => 
+                  setFormData(prev => ({ ...prev, account_type: value }))}
+              >
+                <HStack spacing={4}>
+                  <Radio value="user" data-cy="account-type-user">Individual User</Radio>
+                  <Radio value="company" data-cy="account-type-company">Company</Radio>
+                </HStack>
+              </RadioGroup>
+            </FormControl>
+
             <FormControl isInvalid={!!errors.user_name}>
               <FormLabel>Username</FormLabel>
               <Input
@@ -102,7 +120,7 @@ const Register: React.FC = () => {
                 name="user_name"
                 value={formData.user_name}
                 onChange={handleChange}
-                placeholder="Choose a username"
+                placeholder={formData.account_type === 'company' ? "Company username" : "Choose a username"}
                 data-cy="username-input"
               />
               <FormErrorMessage>{errors.user_name}</FormErrorMessage>
@@ -122,13 +140,13 @@ const Register: React.FC = () => {
             </FormControl>
 
             <FormControl isInvalid={!!errors.name}>
-              <FormLabel>Name</FormLabel>
+              <FormLabel>{formData.account_type === 'company' ? 'Company Name' : 'Full Name'}</FormLabel>
               <Input
                 type="text"
                 name="name"
                 value={formData.name}
                 onChange={handleChange}
-                placeholder="Enter your name"
+                placeholder={formData.account_type === 'company' ? "Enter company name" : "Enter your name"}
                 data-cy="name-input"
               />
               <FormErrorMessage>{errors.name}</FormErrorMessage>

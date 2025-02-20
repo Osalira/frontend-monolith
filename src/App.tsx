@@ -27,6 +27,7 @@ import Trading from './pages/Trading';
 import Orders from './pages/Orders';
 import Account from './pages/Account';
 import OrderHistory from './pages/OrderHistory';
+import CompanyStocks from './pages/CompanyStocks';
 
 // Services
 import { authService } from './services/apiService';
@@ -109,6 +110,14 @@ const App: React.FC = () => {
                   element={
                     <ProtectedRoute>
                       <Account />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/company/stocks"
+                  element={
+                    <ProtectedRoute>
+                      <CompanyStocks />
                     </ProtectedRoute>
                   }
                 />

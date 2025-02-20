@@ -6,12 +6,14 @@ export interface LoginResponse {
   success: boolean;
   data: {
     token?: string;
+    account_type?: string;
     error?: string;
   };
 }
 
 export interface ApiError {
   response?: {
+    status?: number;
     data?: {
       error?: string;
     };
@@ -76,8 +78,39 @@ export interface Order {
   completed_at?: string;
 }
 
+export interface StockCreationData {
+  symbol: string;
+  name: string;
+  initial_price: number;
+  total_shares: number;
+}
+
 interface ErrorResponse {
   error?: string;
+}
+
+// Updated interfaces to match Test Run-1 specifications
+export interface OrderRequest {
+  token?: string;
+  stock_id: string;
+  is_buy: boolean;
+  order_type: 'MARKET' | 'LIMIT';
+  quantity: number;
+  price?: number;
+}
+
+export interface WalletRequest {
+  token: string;
+  amount: number;
+}
+
+export interface CancelTransactionRequest {
+  token: string;
+  stock_tx_id: string;
+}
+
+export interface StockCreationRequest {
+  stock_name: string;
 }
 
 // API instance
@@ -107,10 +140,25 @@ api.interceptors.request.use(
 
 // Response interceptor for handling token expiration
 api.interceptors.response.use(
-  (response) => {
-    return response;
-  },
-  (error) => {
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    
+    if (error.response?.status === 401 && error.response?.data?.data?.detail === "Token has expired" && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const refreshToken = localStorage.getItem('refreshToken');
+        const response = await axios.post(`${API_BASE_URL}/auth/refresh`, { refresh_token: refreshToken });
+        const { access_token } = response.data;
+        localStorage.setItem('token', access_token);
+        originalRequest.headers['Authorization'] = `Bearer ${access_token}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        authService.logout();
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
+    }
     return Promise.reject(error);
   }
 );
@@ -134,29 +182,27 @@ export const authService = {
       });
 
       const response = await api.post('/auth/login', credentials);
-
+      
       console.log('Raw API Response:', {
-        status: response.status,
-        data: response.data,
-        headers: response.headers,
+        ...response,
         timestamp: new Date().toISOString()
       });
 
-      // Check if we have an access_token in the response
-      if (response.data.access_token) {
+      // Check if we have a token in the response
+      if (response.data.data?.token) {
         // Store the token
-        localStorage.setItem('token', response.data.access_token);
-
-        console.log('Login successful:', {
-          username: credentials.user_name,
-          timestamp: new Date().toISOString(),
-          tokenReceived: true
-        });
+        localStorage.setItem('token', response.data.data.token);
+        
+        // Extract account type from JWT
+        const decodedToken = jwtDecode(response.data.data.token);
+        const account_type = decodedToken.account_type || 'user';
+        localStorage.setItem('account_type', account_type);
 
         return {
           success: true,
           data: {
-            token: response.data.access_token
+            token: response.data.data.token,
+            account_type
           }
         };
       }
@@ -164,15 +210,14 @@ export const authService = {
       console.log('Login failed (no token):', {
         username: credentials.user_name,
         timestamp: new Date().toISOString(),
-        responseSuccess: response.data.success,
         responseData: response.data,
-        error: response.data.error || 'No error message provided'
+        error: 'No access token in response'
       });
 
       return {
         success: false,
         data: {
-          error: response.data.error || 'Invalid username or password'
+          error: 'Invalid username or password'
         }
       };
     } catch (error) {
@@ -196,8 +241,24 @@ export const authService = {
   },
 
   register: async (data: RegisterData) => {
-    const response = await api.post('/auth/register', data);
-    return response;
+    try {
+      console.log('Register attempt:', {
+        username: data.user_name,
+        timestamp: new Date().toISOString(),
+        endpoint: `${API_BASE_URL}/auth/register`
+      });
+      const response = await api.post('/auth/register', data);
+      return response.data;
+    } catch (error) {
+      const apiError = error as AxiosError<ErrorResponse>;
+      if (apiError.response?.status === 409) {
+        throw new Error('Username already exists');
+      }
+      if (apiError.response?.status === 400) {
+        throw new Error(apiError.response.data.error || 'Invalid registration data');
+      }
+      throw handleApiError(error);
+    }
   },
 
   logout: () => {
@@ -206,14 +267,12 @@ export const authService = {
 
   isAuthenticated: () => {
     const token = localStorage.getItem('token');
-    if (!token) return false;
+    return !!token;
+  },
 
-    try {
-      const decoded: any = jwtDecode(token);
-      return decoded.exp * 1000 > Date.now();
-    } catch {
-      return false;
-    }
+  isCompanyAccount: () => {
+    const accountType = localStorage.getItem('account_type');
+    return accountType === 'company';
   },
 };
 
@@ -238,9 +297,78 @@ export const accountService = {
 // Trading Service
 export const tradingService = {
   // Stock Management
-  createStock: async (stockName: string) => {
-    const response = await api.post('/api/stocks/create/', { stock_name: stockName });
-    return response;
+  createStock: async (data: StockCreationRequest) => {
+    try {
+      console.log('Creating stock:', {
+        ...data,
+        timestamp: new Date().toISOString()
+      });
+
+      const response = await api.post('/trading/stocks/create/', data);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.data?.error || 'Failed to create stock');
+      }
+      
+      return response.data;
+    } catch (error) {
+      console.error('Failed to create stock:', {
+        error,
+        status: (error as ApiError).response?.status,
+        data: (error as ApiError).response?.data,
+        requestData: data,
+        timestamp: new Date().toISOString()
+      });
+      
+      if ((error as ApiError).response?.status === 404) {
+        throw new Error('Stock creation endpoint not found - please check the API configuration');
+      }
+      
+      if ((error as ApiError).response?.status === 405) {
+        throw new Error('Invalid request method or endpoint');
+      }
+      
+      if ((error as any).code === 'ERR_NETWORK') {
+        throw new Error('Network error - please check your connection');
+      }
+      
+      throw error;
+    }
+  },
+
+  getCompanyStocks: async () => {
+    console.log('Fetching company stocks:', {
+      endpoint: '/trading/stocks/company/',
+      timestamp: new Date().toISOString()
+    });
+
+    try {
+      const response = await api.get('/trading/stocks/company/');
+      
+      if (!response.data.success) {
+        throw new Error(response.data.data?.error || 'Failed to fetch company stocks');
+      }
+      
+      return response.data;
+    } catch (error: any) {
+      console.error('Failed to fetch company stocks:', {
+        error: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        timestamp: new Date().toISOString(),
+        stack: error.stack
+      });
+      
+      if (error.response?.status === 404) {
+        throw new Error('Company stocks endpoint not found');
+      }
+      
+      if (error.code === 'ERR_NETWORK') {
+        throw new Error('Network error - please check your connection');
+      }
+      
+      throw error;
+    }
   },
 
   addStockToUser: async (stockId: string, quantity: number) => {
@@ -257,20 +385,51 @@ export const tradingService = {
   },
 
   // Order Management
-  placeOrder: async (orderData: {
-    stock_id: string;
-    quantity: number;
-    is_buy: boolean;
-    order_type: 'MARKET' | 'LIMIT';
-    price?: number;
-  }) => {
-    const response = await api.post('/api/stocks/order/', orderData);
-    return response;
+  placeOrder: async (data: OrderRequest) => {
+    try {
+      console.log('Placing order:', {
+        endpoint: '/trading/orders/place/',
+        data,
+        timestamp: new Date().toISOString()
+      });
+
+      const token = localStorage.getItem('token');
+      const orderRequest = {
+        ...data,
+        token,
+        stock_id: data.stock_id,
+        is_buy: data.is_buy,
+        order_type: data.order_type,
+        quantity: data.quantity,
+        ...(data.order_type === 'LIMIT' && { price: data.price })
+      };
+
+      const response = await api.post('/trading/orders/place/', orderRequest);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to place order:', {
+        error,
+        requestData: data,
+        timestamp: new Date().toISOString()
+      });
+      throw handleApiError(error);
+    }
   },
 
   getOrders: async () => {
-    const response = await api.get('/api/orders/');
-    return response;
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.get('/trading/orders', {
+        params: { token }
+      });
+      // Sort orders by timestamp in descending order
+      const sortedOrders = response.data.orders.sort((a: any, b: any) => 
+        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      );
+      return { ...response.data, orders: sortedOrders };
+    } catch (error) {
+      throw handleApiError(error);
+    }
   },
 
   getRecentOrders: async () => {
@@ -286,15 +445,100 @@ export const tradingService = {
   },
 
   // Wallet Management
-  getWallet: async () => {
-    const response = await api.get('/api/wallet/');
-    return response;
+  addFunds: async (data: WalletRequest) => {
+    try {
+      // Convert amount to number and validate it's positive
+      const amount = Number(data.amount);
+      if (isNaN(amount) || amount <= 0) {
+        throw new Error('Amount must be a positive number');
+      }
+
+      const response = await api.post('/trading/wallet/add-money/', {
+        token: data.token,
+        amount: amount  // Send the converted number
+      });
+      return response.data;
+    } catch (error) {
+      if (error instanceof Error) {
+        throw new Error(error.message);
+      }
+      throw handleApiError(error);
+    }
+  },
+
+  getWalletBalance: async () => {
+    try {
+      const response = await api.get('/trading/wallet/balance/');
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  },
+
+  // Portfolio Management
+  getPortfolio: async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.get('/trading/portfolio', {
+        params: { token }
+      });
+      // Sort holdings lexicographically by stock name in decreasing order
+      const sortedHoldings = response.data.holdings.sort((a: any, b: any) => 
+        b.stock_name.localeCompare(a.stock_name)
+      );
+      return { ...response.data, holdings: sortedHoldings };
+    } catch (error) {
+      throw handleApiError(error);
+    }
   },
 
   // Market Data
-  getMarketPrices: async () => {
-    const response = await api.get('/api/market-prices/');
-    return response;
+  getStockPrices: async () => {
+    try {
+      const response = await api.get('/trading/stocks/prices/');
+      return response.data.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  },
+
+  // Transaction Management
+  cancelTransaction: async (txId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      console.log('Cancelling transaction:', {
+        txId,
+        timestamp: new Date().toISOString()
+      });
+
+      const response = await api.post('/trading/stocks/cancel-transaction', {
+        token,
+        stock_tx_id: txId
+      });
+
+      if (!response.data.success) {
+        throw new Error(response.data.data?.error || 'Failed to cancel transaction');
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('Failed to cancel transaction:', {
+        error,
+        timestamp: new Date().toISOString()
+      });
+      throw error;
+    }
+  },
+
+  // Cancel partial orders
+  cancelPartialOrders: async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.post('/trading/orders/cancel-partial/', { token });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
   },
 };
 

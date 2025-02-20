@@ -33,32 +33,68 @@ const Orders: React.FC = () => {
     () => tradingService.getOrders()
   );
 
-  // Cancel order mutation
+  // Cancel transaction mutation
   const cancelMutation = useMutation(
-    (orderId: string) => tradingService.cancelOrder(orderId),
+    (txId: string) => tradingService.cancelTransaction(txId),
     {
       onSuccess: () => {
         queryClient.invalidateQueries('orders');
         toast({
-          title: 'Order cancelled successfully',
+          title: 'Transaction cancelled successfully',
           status: 'success',
           duration: 3000,
+          isClosable: true,
         });
       },
       onError: (error: any) => {
+        const errorMessage = error.response?.data?.data?.error || error.message || 'An error occurred';
         toast({
-          title: 'Failed to cancel order',
-          description: error.response?.data?.data?.error || 'An error occurred',
+          title: 'Failed to cancel transaction',
+          description: errorMessage,
           status: 'error',
           duration: 5000,
+          isClosable: true,
         });
       },
     }
   );
 
-  const handleCancelOrder = (orderId: string) => {
-    if (window.confirm('Are you sure you want to cancel this order?')) {
-      cancelMutation.mutate(orderId);
+  // Cancel partial orders mutation
+  const cancelPartialMutation = useMutation(
+    () => tradingService.cancelPartialOrders(),
+    {
+      onSuccess: (response: { success: boolean; data?: any }) => {
+        queryClient.invalidateQueries('orders');
+        toast({
+          title: 'Partial orders cancelled',
+          description: `Cancelled ${response.data.cancelledOrders.length} orders`,
+          status: 'success',
+          duration: 3000,
+          isClosable: true,
+        });
+      },
+      onError: (error: any) => {
+        const errorMessage = error.response?.data?.data?.error || error.message || 'An error occurred';
+        toast({
+          title: 'Failed to cancel partial orders',
+          description: errorMessage,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      },
+    }
+  );
+
+  const handleCancelTransaction = (txId: string) => {
+    if (window.confirm('Are you sure you want to cancel this transaction?')) {
+      cancelMutation.mutate(txId);
+    }
+  };
+
+  const handleCancelPartialOrders = () => {
+    if (window.confirm('Are you sure you want to cancel all partially complete orders?')) {
+      cancelPartialMutation.mutate();
     }
   };
 
@@ -93,14 +129,24 @@ const Orders: React.FC = () => {
       <VStack spacing={8}>
         <HStack w="100%" justify="space-between">
           <Heading>Orders</Heading>
-          <Button
-            colorScheme="red"
-            variant="outline"
-            onClick={() => queryClient.invalidateQueries('orders')}
-            data-cy="refresh-orders"
-          >
-            Refresh
-          </Button>
+          <HStack spacing={4}>
+            <Button
+              colorScheme="red"
+              onClick={handleCancelPartialOrders}
+              isLoading={cancelPartialMutation.isLoading}
+              data-cy="cancel-partial-orders"
+            >
+              Cancel Partial Orders
+            </Button>
+            <Button
+              colorScheme="blue"
+              variant="outline"
+              onClick={() => queryClient.invalidateQueries('orders')}
+              data-cy="refresh-orders"
+            >
+              Refresh
+            </Button>
+          </HStack>
         </HStack>
 
         <Card w="100%">
@@ -133,7 +179,7 @@ const Orders: React.FC = () => {
                         <Button
                           size="sm"
                           colorScheme="red"
-                          onClick={() => handleCancelOrder(order.id)}
+                          onClick={() => handleCancelTransaction(order.id)}
                           isLoading={cancelMutation.isLoading}
                           data-cy={`cancel-order-${order.id}`}
                         >

@@ -6,6 +6,7 @@ import { authService } from '../services/apiService';
 const Navigation: React.FC = () => {
   const location = useLocation();
   const isAuthenticated = authService.isAuthenticated();
+  const isCompany = authService.isCompanyAccount();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -38,6 +39,26 @@ const Navigation: React.FC = () => {
         color={isActive('/orders') ? 'blue.500' : undefined}
       >
         Orders
+      </Link>
+      {isCompany && (
+        <Link
+          as={RouterLink}
+          to="/company/stocks"
+          fontWeight={isActive('/company/stocks') ? 'bold' : 'normal'}
+          color={isActive('/company/stocks') ? 'blue.500' : undefined}
+          data-cy="company-stocks-link"
+        >
+          Manage Stocks
+        </Link>
+      )}
+      <Link
+        as={RouterLink}
+        to="/account"
+        fontWeight={isActive('/account') ? 'bold' : 'normal'}
+        color={isActive('/account') ? 'blue.500' : undefined}
+        data-cy="account-link"
+      >
+        Account
       </Link>
     </HStack>
   );

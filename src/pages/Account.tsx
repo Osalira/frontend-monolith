@@ -33,65 +33,98 @@ import {
   Center,
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
-import { accountService, handleApiError } from '../services/apiService';
+import { tradingService } from '../services/apiService';
+
+interface WalletResponse {
+  success: boolean;
+  data: {
+    balance: number;
+    error?: string;
+  };
+}
 
 const Account: React.FC = () => {
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false);
-  const [depositAmount, setDepositAmount] = useState(0);
+  const [depositAmount, setDepositAmount] = useState<number>(0);
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch account details
-  const { data: accountDetails, isLoading: accountLoading } = useQuery(
-    'accountDetails',
-    () => accountService.getAccountDetails()
-  );
-
   // Fetch wallet balance
-  const { data: walletData, isLoading: walletLoading } = useQuery(
+  const { data: walletData, isLoading: walletLoading, error: walletError } = useQuery(
     'walletBalance',
-    () => accountService.getWalletBalance()
+    () => tradingService.getWalletBalance(),
+    {
+      retry: 3,
+      onError: (error: any) => {
+        const errorMessage = error.response?.data?.data?.error || error.message || 'Failed to fetch wallet balance';
+        toast({
+          title: 'Error',
+          description: errorMessage,
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    }
   );
 
   // Add money mutation
   const depositMutation = useMutation(
-    (amount: number) => accountService.addMoney(amount),
+    (amount: number) => tradingService.addFunds({
+      token: localStorage.getItem('token') || '',
+      amount: amount
+    }),
     {
-      onSuccess: () => {
-        queryClient.invalidateQueries('walletBalance');
-        toast({
-          title: 'Deposit successful',
-          status: 'success',
-          duration: 3000,
-        });
-        setIsDepositModalOpen(false);
-        setDepositAmount(0);
+      onSuccess: (response: WalletResponse) => {
+        if (response.success) {
+          queryClient.invalidateQueries('walletBalance');
+          toast({
+            title: 'Deposit successful',
+            status: 'success',
+            duration: 3000,
+            isClosable: true,
+          });
+          setIsDepositModalOpen(false);
+          setDepositAmount(0);
+        } else {
+          toast({
+            title: 'Failed to add funds',
+            description: response.data?.error || 'An error occurred',
+            status: 'error',
+            duration: 5000,
+            isClosable: true,
+          });
+        }
       },
-      onError: (error) => {
+      onError: (error: any) => {
+        const errorMessage = error.response?.data?.data?.error || error.message || 'An error occurred';
         toast({
-          title: 'Deposit failed',
-          description: handleApiError(error),
+          title: 'Failed to add funds',
+          description: errorMessage,
           status: 'error',
           duration: 5000,
+          isClosable: true,
         });
       },
     }
   );
 
   const handleDeposit = () => {
-    if (depositAmount <= 0) {
+    const amount = Number(depositAmount);
+    if (isNaN(amount) || amount <= 0) {
       toast({
         title: 'Invalid amount',
-        description: 'Please enter a valid amount greater than 0',
+        description: 'Please enter a positive amount',
         status: 'error',
         duration: 3000,
+        isClosable: true,
       });
       return;
     }
-    depositMutation.mutate(depositAmount);
+    depositMutation.mutate(amount);
   };
 
-  if (accountLoading || walletLoading) {
+  if (walletLoading) {
     return (
       <Center h="200px">
         <Spinner size="xl" />
@@ -99,44 +132,28 @@ const Account: React.FC = () => {
     );
   }
 
+  if (walletError) {
+    return (
+      <Container maxW="container.xl" py={8}>
+        <Text color="red.500">Failed to load wallet information. Please try again later.</Text>
+      </Container>
+    );
+  }
+
   return (
     <Container maxW="container.xl" py={8}>
       <VStack spacing={8} align="stretch">
         <Box>
-          <Heading mb={6}>Account Overview</Heading>
-          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={6}>
+          <Heading mb={6}>Wallet Management</Heading>
+          <SimpleGrid columns={{ base: 1, md: 2 }} spacing={6}>
             <Card>
               <CardHeader>
-                <Heading size="md">Account Details</Heading>
-              </CardHeader>
-              <CardBody>
-                <VStack align="stretch" spacing={4}>
-                  <Box>
-                    <Text fontWeight="bold">Username</Text>
-                    <Text>{accountDetails?.username}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold">Email</Text>
-                    <Text>{accountDetails?.email}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold">Account Created</Text>
-                    <Text>
-                      {new Date(accountDetails?.created_at).toLocaleDateString()}
-                    </Text>
-                  </Box>
-                </VStack>
-              </CardBody>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <Heading size="md">Wallet</Heading>
+                <Heading size="md">Available Balance</Heading>
               </CardHeader>
               <CardBody>
                 <Stat>
-                  <StatLabel>Available Balance</StatLabel>
-                  <StatNumber>${walletData?.balance.toFixed(2)}</StatNumber>
+                  <StatLabel>Current Balance</StatLabel>
+                  <StatNumber>${walletData?.data?.balance?.toFixed(2) || '0.00'}</StatNumber>
                   <StatHelpText>
                     Last updated: {new Date().toLocaleTimeString()}
                   </StatHelpText>
@@ -144,81 +161,62 @@ const Account: React.FC = () => {
                     colorScheme="blue"
                     onClick={() => setIsDepositModalOpen(true)}
                     mt={4}
+                    data-cy="add-funds-button"
                   >
-                    Add Money
+                    Add Funds
                   </Button>
                 </Stat>
               </CardBody>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <Heading size="md">Trading Summary</Heading>
-              </CardHeader>
-              <CardBody>
-                <VStack align="stretch" spacing={4}>
-                  <Box>
-                    <Text fontWeight="bold">Total Trades</Text>
-                    <Text>{accountDetails?.total_trades || 0}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold">Active Orders</Text>
-                    <Text>{accountDetails?.active_orders || 0}</Text>
-                  </Box>
-                  <Box>
-                    <Text fontWeight="bold">Portfolio Value</Text>
-                    <Text>${accountDetails?.portfolio_value?.toFixed(2) || '0.00'}</Text>
-                  </Box>
-                </VStack>
-              </CardBody>
-            </Card>
           </SimpleGrid>
         </Box>
-      </VStack>
 
-      {/* Deposit Modal */}
-      <Modal
-        isOpen={isDepositModalOpen}
-        onClose={() => setIsDepositModalOpen(false)}
-      >
-        <ModalOverlay />
-        <ModalContent>
-          <ModalHeader>Add Money to Wallet</ModalHeader>
-          <ModalCloseButton />
-          <ModalBody>
-            <FormControl>
-              <FormLabel>Amount to Deposit</FormLabel>
-              <NumberInput
-                min={0.01}
-                step={0.01}
-                precision={2}
-                value={depositAmount}
-                onChange={(_, value) => setDepositAmount(value)}
+        {/* Deposit Modal */}
+        <Modal
+          isOpen={isDepositModalOpen}
+          onClose={() => setIsDepositModalOpen(false)}
+        >
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Add Funds to Wallet</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <FormControl>
+                <FormLabel>Amount to Deposit ($)</FormLabel>
+                <NumberInput
+                  min={0.01}
+                  step={0.01}
+                  precision={2}
+                  value={depositAmount}
+                  onChange={(valueString: string) => setDepositAmount(Number(valueString))}
+                  data-cy="deposit-amount-input"
+                >
+                  <NumberInputField />
+                  <NumberInputStepper>
+                    <NumberIncrementStepper />
+                    <NumberDecrementStepper />
+                  </NumberInputStepper>
+                </NumberInput>
+              </FormControl>
+            </ModalBody>
+
+            <ModalFooter>
+              <Button
+                colorScheme="blue"
+                mr={3}
+                onClick={handleDeposit}
+                isLoading={depositMutation.isLoading}
+                data-cy="confirm-deposit"
               >
-                <NumberInputField />
-                <NumberInputStepper>
-                  <NumberIncrementStepper />
-                  <NumberDecrementStepper />
-                </NumberInputStepper>
-              </NumberInput>
-            </FormControl>
-          </ModalBody>
-
-          <ModalFooter>
-            <Button
-              colorScheme="blue"
-              mr={3}
-              onClick={handleDeposit}
-              isLoading={depositMutation.isLoading}
-            >
-              Deposit
-            </Button>
-            <Button variant="ghost" onClick={() => setIsDepositModalOpen(false)}>
-              Cancel
-            </Button>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
+                Deposit
+              </Button>
+              <Button variant="ghost" onClick={() => setIsDepositModalOpen(false)}>
+                Cancel
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+      </VStack>
     </Container>
   );
 };

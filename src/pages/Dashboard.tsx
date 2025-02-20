@@ -108,7 +108,7 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardBody>
                 <Stat>
-                  <StatNumber>${walletData?.balance.toFixed(2) || '0.00'}</StatNumber>
+                  <StatNumber>${walletData?.data?.balance?.toFixed(2) || '0.00'}</StatNumber>
                   <StatHelpText>
                     Available for trading
                   </StatHelpText>
