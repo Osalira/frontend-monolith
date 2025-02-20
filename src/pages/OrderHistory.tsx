@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -25,185 +25,199 @@ import {
   Input,
   FormControl,
   FormLabel,
+  Tooltip,
+  Progress,
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { tradingService, handleApiError } from '../services/apiService';
 import { format } from 'date-fns';
+import { useWebSocket } from '../services/websocketService';
+
+interface OrderResponse {
+  success: boolean;
+  data: {
+    results: Order[];
+  };
+}
 
 interface Order {
   id: string;
   symbol: string;
   order_type: string;
   quantity: number;
+  executed_quantity?: number;
   price: number;
-  status: string;
+  status: OrderStatus;
   created_at: string;
   completed_at?: string;
   type: string;
 }
 
+type OrderStatus = 'PENDING' | 'PARTIALLY_COMPLETE' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+
 const OrderHistory: React.FC = () => {
-  const [filterSymbol, setFilterSymbol] = React.useState('');
-  const [filterDateRange, setFilterDateRange] = React.useState('7'); // days
-  const toast = useToast();
+  const [symbolFilter, setSymbolFilter] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const queryClient = useQueryClient();
+  const toast = useToast();
+  const isConnected = useWebSocket(); // WebSocket connection status
 
-  // Cancel order mutation
-  const cancelMutation = useMutation(
-    (orderId: string) => tradingService.cancelOrder(orderId),
-    {
-      onSuccess: () => {
-        queryClient.invalidateQueries('orders');
-        toast({
-          title: 'Order cancelled successfully',
-          status: 'success',
-          duration: 3000,
-        });
-      },
-      onError: (error: Error) => {
-        toast({
-          title: 'Failed to cancel order',
-          description: handleApiError(error),
-          status: 'error',
-          duration: 5000,
-        });
-      },
-    }
-  );
+  // Query for fetching orders with improved error handling
+  const { data: orders = [], isLoading, error } = useQuery({
+    queryKey: ['orders', symbolFilter, dateFilter],
+    queryFn: async (): Promise<Order[]> => {
+      try {
+        const response = await tradingService.getOrders(symbolFilter, dateFilter);
+        
+        // Validate response structure
+        if (!response || typeof response !== 'object') {
+          throw new Error('Invalid response format from server');
+        }
 
-  // Cancel partial orders mutation
-  const cancelPartialMutation = useMutation(
-    () => tradingService.cancelPartialOrders(),
-    {
-      onSuccess: (response: { success: boolean; data?: any }) => {
-        queryClient.invalidateQueries('orders');
-        toast({
-          title: 'Partial orders cancelled',
-          description: `Cancelled ${response.data.cancelledOrders.length} orders`,
-          status: 'success',
-          duration: 3000,
-        });
-      },
-      onError: (error: Error) => {
-        toast({
-          title: 'Failed to cancel partial orders',
-          description: handleApiError(error),
-          status: 'error',
-          duration: 5000,
-        });
-      },
-    }
-  );
+        const typedResponse = response as OrderResponse;
+        
+        // Ensure we have the expected data structure
+        if (!typedResponse.data || !Array.isArray(typedResponse.data.results)) {
+          console.warn('Unexpected response format:', typedResponse);
+          return [];
+        }
 
-  // Fetch orders with filters
-  const { data: orders, isLoading, error: ordersError } = useQuery(
-    ['orders', filterSymbol, filterDateRange],
-    async () => {
-      console.log('Fetching orders...');
-      const response = await tradingService.getOrders();
-      console.log('Orders response:', response);
-      return response;
-    },
-    {
-      onError: (error: any) => {
+        return typedResponse.data.results;
+      } catch (error) {
         console.error('Error fetching orders:', error);
         toast({
-          title: 'Failed to fetch orders',
-          description: error.message || 'An unexpected error occurred',
+          title: 'Error Fetching Orders',
+          description: error instanceof Error ? error.message : 'An unexpected error occurred',
           status: 'error',
           duration: 5000,
           isClosable: true,
         });
-      },
-      select: (data: Order[]) => {
-        console.log('Processing orders data:', data);
-        let filteredOrders = [...data];
-        
-        // Apply symbol filter
-        if (filterSymbol) {
-          console.log('Applying symbol filter:', filterSymbol);
-          filteredOrders = filteredOrders.filter(
-            order => order.symbol.toLowerCase().includes(filterSymbol.toLowerCase())
-          );
-          console.log('Orders after symbol filter:', filteredOrders);
-        }
-        
-        // Apply date filter
-        if (filterDateRange) {
-          console.log('Applying date filter:', filterDateRange, 'days');
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() - parseInt(filterDateRange));
-          filteredOrders = filteredOrders.filter(
-            order => new Date(order.created_at) >= cutoffDate
-          );
-          console.log('Orders after date filter:', filteredOrders);
-        }
-        
-        return filteredOrders;
+        return [];
       }
+    },
+    refetchInterval: isConnected ? false : 5000,
+    retry: 3,
+    retryDelay: (attemptIndex: number) => Math.min(1000 * Math.pow(2, attemptIndex), 30000),
+  });
+
+  // Mutation for canceling orders
+  const cancelMutation = useMutation(
+    (orderId: string) => tradingService.cancelOrder(orderId),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['orders']);
+        toast({
+          title: 'Order Cancelled',
+          status: 'success',
+          duration: 3000,
+        });
+      },
+      onError: (error: any) => {
+        toast({
+          title: 'Failed to cancel order',
+          description: error.message,
+          status: 'error',
+          duration: 5000,
+        });
+      },
     }
   );
 
-  // Add logging for active and completed orders
-  const [activeOrders, setActiveOrders] = React.useState<Order[]>([]);
-  const [completedOrders, setCompletedOrders] = React.useState<Order[]>([]);
-
-  React.useEffect(() => {
-    if (orders) {
-      const active = orders.filter((order: Order) => 
-        order.status === 'PENDING' || order.status === 'PARTIALLY_COMPLETE'
-      );
-      const completed = orders.filter((order: Order) => 
-        order.status !== 'PENDING' && order.status !== 'PARTIALLY_COMPLETE'
-      );
-      
-      setActiveOrders(active);
-      setCompletedOrders(completed);
-      
-      console.log('All orders:', orders);
-      console.log('Active orders:', active);
-      console.log('Completed orders:', completed);
+  // Mutation for canceling partial orders
+  const cancelPartialMutation = useMutation(
+    () => tradingService.cancelPartialOrders(),
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries(['orders']);
+        toast({
+          title: 'Partial Orders Cancelled',
+          status: 'success',
+          duration: 3000,
+        });
+      },
+      onError: (error: any) => {
+        toast({
+          title: 'Failed to cancel partial orders',
+          description: error.message,
+          status: 'error',
+          duration: 5000,
+        });
+      },
     }
-  }, [orders]);
+  );
 
-  // Add logging to price formatting
-  const formatPrice = (price: any) => {
-    console.log('Formatting price:', { original: price, type: typeof price });
-    const numPrice = Number(price);
-    console.log('Converted price:', { numPrice, type: typeof numPrice });
-    return numPrice.toFixed(2);
+  // Filter orders with type safety
+  const filteredOrders = React.useMemo(() => {
+    return (orders as Order[]).filter((order: Order) => {
+      const matchesSymbol = !symbolFilter || 
+        order.symbol.toLowerCase().includes(symbolFilter.toLowerCase());
+      const matchesDate = !dateFilter || 
+        order.created_at.includes(dateFilter);
+      return matchesSymbol && matchesDate;
+    });
+  }, [orders, symbolFilter, dateFilter]);
+
+  // Separate active and completed orders with proper typing
+  const activeOrders = React.useMemo(() => 
+    filteredOrders.filter((order: Order) => 
+      ['PENDING', 'PARTIALLY_COMPLETE'].includes(order.status)
+    ), [filteredOrders]);
+
+  const completedOrders = React.useMemo(() => 
+    filteredOrders.filter((order: Order) => 
+      ['COMPLETED', 'CANCELLED', 'FAILED'].includes(order.status)
+    ), [filteredOrders]);
+
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD'
+    }).format(price);
   };
 
   const handleCancelOrder = (orderId: string) => {
-    if (window.confirm('Are you sure you want to cancel this order?')) {
-      cancelMutation.mutate(orderId);
-    }
+    cancelMutation.mutate(orderId);
   };
 
   const handleCancelPartialOrders = () => {
-    if (window.confirm('Are you sure you want to cancel all partially complete orders?')) {
-      cancelPartialMutation.mutate();
-    }
+    cancelPartialMutation.mutate();
   };
 
   const getStatusBadge = (status: string) => {
-    const statusColors: { [key: string]: string } = {
+    const statusColors = {
       PENDING: 'yellow',
+      PARTIALLY_COMPLETE: 'orange',
       COMPLETED: 'green',
       CANCELLED: 'red',
-      FAILED: 'red',
-      PARTIALLY_COMPLETE: 'blue',
+      FAILED: 'gray'
     };
-
-    return (
-      <Badge colorScheme={statusColors[status] || 'gray'}>
-        {status}
-      </Badge>
-    );
+    return <Badge colorScheme={statusColors[status as keyof typeof statusColors]}>{status}</Badge>;
   };
 
   const formatDateTime = (dateString: string) => {
-    return format(new Date(dateString), 'MMM dd, yyyy HH:mm:ss');
+    return format(new Date(dateString), 'MMM d, yyyy HH:mm:ss');
+  };
+
+  const getProgressValue = (order: Order): number => {
+    if (!order.executed_quantity) return 0;
+    return (order.executed_quantity / order.quantity) * 100;
+  };
+
+  const getOrderStatus = (order: Order): string => {
+    switch (order.status) {
+      case 'PENDING':
+        return 'Pending';
+      case 'PARTIALLY_COMPLETE':
+        return 'Partially Complete';
+      case 'COMPLETED':
+        return 'Completed';
+      case 'CANCELLED':
+        return 'Cancelled';
+      case 'FAILED':
+        return 'Failed';
+      default:
+        return 'Unknown';
+    }
   };
 
   if (isLoading) {
@@ -226,23 +240,20 @@ const OrderHistory: React.FC = () => {
             <FormLabel>Symbol</FormLabel>
             <Input
               placeholder="Filter by symbol"
-              value={filterSymbol}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterSymbol(e.target.value)}
+              value={symbolFilter}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSymbolFilter(e.target.value)}
+              data-cy="symbol-filter"
             />
           </FormControl>
           
           <FormControl maxW="200px">
-            <FormLabel>Time Range</FormLabel>
-            <Select
-              value={filterDateRange}
-              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterDateRange(e.target.value)}
-            >
-              <option value="7">Last 7 days</option>
-              <option value="30">Last 30 days</option>
-              <option value="90">Last 90 days</option>
-              <option value="365">Last year</option>
-              <option value="">All time</option>
-            </Select>
+            <FormLabel>Date</FormLabel>
+            <Input
+              type="date"
+              value={dateFilter}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDateFilter(e.target.value)}
+              data-cy="date-filter"
+            />
           </FormControl>
         </HStack>
 
@@ -258,11 +269,16 @@ const OrderHistory: React.FC = () => {
           <Button
             colorScheme="blue"
             variant="outline"
-            onClick={() => queryClient.invalidateQueries('orders')}
+            onClick={() => queryClient.invalidateQueries(['orders'])}
             data-cy="refresh-orders"
           >
             Refresh
           </Button>
+          {!isConnected && (
+            <Badge colorScheme="red">
+              WebSocket Disconnected - Falling back to polling
+            </Badge>
+          )}
         </HStack>
       </HStack>
 
@@ -285,28 +301,38 @@ const OrderHistory: React.FC = () => {
                       <Th>Symbol</Th>
                       <Th>Type</Th>
                       <Th>Quantity</Th>
+                      <Th>Progress</Th>
                       <Th>Price</Th>
-                      <Th>Total</Th>
                       <Th>Status</Th>
                       <Th>Created At</Th>
                       <Th>Actions</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {activeOrders.map((order: Order) => (
+                    {activeOrders.map(order => (
                       <Tr key={order.id}>
                         <Td>{order.id}</Td>
                         <Td>{order.symbol}</Td>
+                        <Td>{order.type}</Td>
                         <Td>
-                          <Badge
-                            colorScheme={order.type === 'BUY' ? 'green' : 'red'}
+                          <Tooltip 
+                            label={`Executed: ${order.executed_quantity || 0} / ${order.quantity}`}
+                            isDisabled={!order.executed_quantity}
                           >
-                            {order.type}
-                          </Badge>
+                            <Box>
+                              {order.quantity}
+                              {order.executed_quantity && (
+                                <Progress 
+                                  value={getProgressValue(order)}
+                                  size="sm"
+                                  mt={1}
+                                  colorScheme="blue"
+                                />
+                              )}
+                            </Box>
+                          </Tooltip>
                         </Td>
-                        <Td>{order.quantity}</Td>
-                        <Td>${formatPrice(order.price)}</Td>
-                        <Td>${(order.quantity * Number(formatPrice(order.price))).toFixed(2)}</Td>
+                        <Td>{formatPrice(order.price)}</Td>
                         <Td>{getStatusBadge(order.status)}</Td>
                         <Td>{formatDateTime(order.created_at)}</Td>
                         <Td>
@@ -315,6 +341,7 @@ const OrderHistory: React.FC = () => {
                             colorScheme="red"
                             onClick={() => handleCancelOrder(order.id)}
                             isLoading={cancelMutation.isLoading}
+                            data-cy="cancel-order"
                           >
                             Cancel
                           </Button>
@@ -340,34 +367,22 @@ const OrderHistory: React.FC = () => {
                       <Th>Type</Th>
                       <Th>Quantity</Th>
                       <Th>Price</Th>
-                      <Th>Total</Th>
                       <Th>Status</Th>
                       <Th>Created At</Th>
                       <Th>Completed At</Th>
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {completedOrders.map((order: Order) => (
+                    {completedOrders.map(order => (
                       <Tr key={order.id}>
                         <Td>{order.id}</Td>
                         <Td>{order.symbol}</Td>
-                        <Td>
-                          <Badge
-                            colorScheme={order.type === 'BUY' ? 'green' : 'red'}
-                          >
-                            {order.type}
-                          </Badge>
-                        </Td>
+                        <Td>{order.type}</Td>
                         <Td>{order.quantity}</Td>
-                        <Td>${formatPrice(order.price)}</Td>
-                        <Td>${(order.quantity * Number(formatPrice(order.price))).toFixed(2)}</Td>
+                        <Td>{formatPrice(order.price)}</Td>
                         <Td>{getStatusBadge(order.status)}</Td>
                         <Td>{formatDateTime(order.created_at)}</Td>
-                        <Td>
-                          {order.completed_at
-                            ? formatDateTime(order.completed_at)
-                            : '-'}
-                        </Td>
+                        <Td>{order.completed_at && formatDateTime(order.completed_at)}</Td>
                       </Tr>
                     ))}
                   </Tbody>
