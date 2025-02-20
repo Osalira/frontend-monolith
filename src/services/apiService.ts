@@ -73,9 +73,10 @@ export interface Order {
   type: 'BUY' | 'SELL';
   quantity: number;
   price: number;
-  status: 'PENDING' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+  status: 'PENDING' | 'PARTIALLY_COMPLETE' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
   created_at: string;
   completed_at?: string;
+  total?: number; // Optional total field for UI display
 }
 
 export interface StockCreationData {
@@ -390,13 +391,14 @@ export const tradingService = {
       // Get the orders array from the paginated response and map to correct structure
       const orders = (response.data.data?.results || []).map((order: any) => ({
         id: order.id,
-        symbol: order.stock_name, // Map stock_name to symbol
+        symbol: order.stock_name,
         type: order.order_type,
         quantity: order.quantity,
         price: order.price,
         status: order.status,
         created_at: order.created_at,
-        completed_at: order.updated_at // Use updated_at as completed_at if status is COMPLETED
+        completed_at: order.updated_at,
+        total: order.quantity * Number(order.price) // Calculate total
       }));
       
       // Sort orders by created_at in descending order

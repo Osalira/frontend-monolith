@@ -39,6 +39,7 @@ interface Order {
   status: string;
   created_at: string;
   completed_at?: string;
+  type: string;
 }
 
 const OrderHistory: React.FC = () => {
@@ -298,9 +299,9 @@ const OrderHistory: React.FC = () => {
                         <Td>{order.symbol}</Td>
                         <Td>
                           <Badge
-                            colorScheme={order.order_type === 'BUY' ? 'green' : 'red'}
+                            colorScheme={order.type === 'BUY' ? 'green' : 'red'}
                           >
-                            {order.order_type}
+                            {order.type}
                           </Badge>
                         </Td>
                         <Td>{order.quantity}</Td>
@@ -352,9 +353,9 @@ const OrderHistory: React.FC = () => {
                         <Td>{order.symbol}</Td>
                         <Td>
                           <Badge
-                            colorScheme={order.order_type === 'BUY' ? 'green' : 'red'}
+                            colorScheme={order.type === 'BUY' ? 'green' : 'red'}
                           >
-                            {order.order_type}
+                            {order.type}
                           </Badge>
                         </Td>
                         <Td>{order.quantity}</Td>
