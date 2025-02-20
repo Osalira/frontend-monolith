@@ -121,6 +121,7 @@ const Dashboard: React.FC = () => {
       COMPLETED: 'green',
       CANCELLED: 'red',
       FAILED: 'red',
+      PARTIALLY_COMPLETE: 'blue'
     };
 
     return (
@@ -129,6 +130,19 @@ const Dashboard: React.FC = () => {
       </Badge>
     );
   };
+
+  // Helper function to determine if an order is complete
+  const isOrderComplete = (order: any) => {
+    // For sell orders, they are complete only when bought
+    if (order.order_type === 'SELL') {
+      return order.status === 'COMPLETED';
+    }
+    // For buy orders, they are complete when the transaction is successful
+    return order.status === 'COMPLETED';
+  };
+
+  // Filter complete orders
+  const completeOrders = recentOrders?.filter(isOrderComplete) || [];
 
   return (
     <Container maxW="container.xl" py={8}>
@@ -185,7 +199,7 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardBody>
                 <Stat>
-                  <StatNumber>{recentOrders?.length || 0}</StatNumber>
+                  <StatNumber>{completeOrders.length}</StatNumber>
                   <StatHelpText>
                     Completed transactions
                   </StatHelpText>
@@ -278,16 +292,16 @@ const Dashboard: React.FC = () => {
                 <Tbody>
                   {recentOrders?.slice(0, 5).map((order: any) => (
                     <Tr key={order.id}>
-                      <Td>{order.symbol}</Td>
+                      <Td>{order.stock_name}</Td>
                       <Td>
                         <Badge
-                          colorScheme={order.type === 'BUY' ? 'green' : 'red'}
+                          colorScheme={order.order_type === 'BUY' ? 'green' : 'red'}
                         >
-                          {order.type}
+                          {order.order_type}
                         </Badge>
                       </Td>
                       <Td>{order.quantity}</Td>
-                      <Td>${order.price}</Td>
+                      <Td>${Number(order.price).toFixed(2)}</Td>
                       <Td>{getStatusBadge(order.status)}</Td>
                       <Td>{new Date(order.created_at).toLocaleString()}</Td>
                     </Tr>
