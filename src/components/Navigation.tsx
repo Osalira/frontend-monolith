@@ -34,9 +34,9 @@ const Navigation: React.FC = () => {
       </Link>
       <Link
         as={RouterLink}
-        to="/orders"
-        fontWeight={isActive('/orders') ? 'bold' : 'normal'}
-        color={isActive('/orders') ? 'blue.500' : undefined}
+        to="/order-history"
+        fontWeight={isActive('/order-history') ? 'bold' : 'normal'}
+        color={isActive('/order-history') ? 'blue.500' : undefined}
       >
         Orders
       </Link>

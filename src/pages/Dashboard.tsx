@@ -30,9 +30,11 @@ import {
 import { useQuery } from 'react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { accountService, tradingService, handleApiError } from '../services/apiService';
+import { useQueryClient } from 'react-query';
 
 const Dashboard: React.FC = () => {
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   // Remove account details query and use portfolio data instead
   const { data: portfolio, isLoading: portfolioLoading, error: portfolioError } = useQuery(
@@ -131,14 +133,42 @@ const Dashboard: React.FC = () => {
     );
   };
 
+  // Helper function to determine if an order can be cancelled
+  const canCancelOrder = (order: any) => {
+    return order.status === 'PENDING' || order.status === 'PARTIALLY_COMPLETE';
+  };
+
   // Helper function to determine if an order is complete
   const isOrderComplete = (order: any) => {
-    // For sell orders, they are complete only when bought
     if (order.order_type === 'SELL') {
       return order.status === 'COMPLETED';
     }
-    // For buy orders, they are complete when the transaction is successful
     return order.status === 'COMPLETED';
+  };
+
+  // Function to handle order cancellation
+  const handleCancelOrder = async (orderId: string) => {
+    try {
+      const response = await tradingService.cancelStockTransaction(orderId);
+      if (response.success) {
+        toast({
+          title: 'Order cancelled successfully',
+          description: response.data.message,
+          status: 'success',
+          duration: 5000,
+        });
+        // Refetch orders and portfolio data
+        queryClient.invalidateQueries('recentOrders');
+        queryClient.invalidateQueries('portfolio');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error cancelling order',
+        description: handleApiError(error),
+        status: 'error',
+        duration: 5000,
+      });
+    }
   };
 
   // Filter complete orders
@@ -267,7 +297,7 @@ const Dashboard: React.FC = () => {
             <Heading size="md">Recent Orders</Heading>
             <Button
               as={RouterLink}
-              to="/orders"
+              to="/order-history"
               colorScheme="blue"
               size="sm"
             >
@@ -287,6 +317,7 @@ const Dashboard: React.FC = () => {
                     <Th>Price</Th>
                     <Th>Status</Th>
                     <Th>Date</Th>
+                    <Th>Actions</Th>
                   </Tr>
                 </Thead>
                 <Tbody>
@@ -304,6 +335,18 @@ const Dashboard: React.FC = () => {
                       <Td>${Number(order.price).toFixed(2)}</Td>
                       <Td>{getStatusBadge(order.status)}</Td>
                       <Td>{new Date(order.created_at).toLocaleString()}</Td>
+                      <Td>
+                        {canCancelOrder(order) && (
+                          <Button
+                            size="sm"
+                            colorScheme="red"
+                            variant="outline"
+                            onClick={() => handleCancelOrder(order.id)}
+                          >
+                            Cancel
+                          </Button>
+                        )}
+                      </Td>
                     </Tr>
                   ))}
                 </Tbody>

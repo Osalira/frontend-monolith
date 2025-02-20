@@ -24,7 +24,6 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Trading from './pages/Trading';
-import Orders from './pages/Orders';
 import Account from './pages/Account';
 import OrderHistory from './pages/OrderHistory';
 import CompanyStocks from './pages/CompanyStocks';
@@ -86,14 +85,6 @@ const App: React.FC = () => {
                   element={
                     <ProtectedRoute>
                       <Trading />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/orders"
-                  element={
-                    <ProtectedRoute>
-                      <Orders />
                     </ProtectedRoute>
                   }
                 />

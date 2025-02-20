@@ -379,17 +379,36 @@ export const tradingService = {
 
   getOrders: async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await api.get('/trading/orders', {
-        params: { token }
-      });
-      // Sort orders by timestamp in descending order
-      const sortedOrders = response.data.orders.sort((a: any, b: any) => 
-        new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      console.log('Fetching orders from API...');
+      const response = await api.get('/trading/orders');
+      console.log('Raw orders response:', response.data);
+      
+      if (!response.data.success) {
+        throw new Error(response.data.data?.error || 'Failed to fetch orders');
+      }
+      
+      // Get the orders array from the paginated response and map to correct structure
+      const orders = (response.data.data?.results || []).map((order: any) => ({
+        id: order.id,
+        symbol: order.stock_name, // Map stock_name to symbol
+        type: order.order_type,
+        quantity: order.quantity,
+        price: order.price,
+        status: order.status,
+        created_at: order.created_at,
+        completed_at: order.updated_at // Use updated_at as completed_at if status is COMPLETED
+      }));
+      
+      // Sort orders by created_at in descending order
+      const sortedOrders = [...orders].sort((a: Order, b: Order) => 
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
-      return { ...response.data, orders: sortedOrders };
+      
+      console.log('Processed and sorted orders:', sortedOrders);
+      return sortedOrders;
     } catch (error) {
-      throw handleApiError(error);
+      console.error('Error fetching orders:', error);
+      throw error;
     }
   },
 
@@ -494,6 +513,18 @@ export const tradingService = {
     try {
       const token = localStorage.getItem('token');
       const response = await api.post('/trading/orders/cancel-partial/', { token });
+      return response.data;
+    } catch (error) {
+      throw handleApiError(error);
+    }
+  },
+
+  // Add cancel transaction method
+  cancelStockTransaction: async (orderId: string) => {
+    try {
+      const response = await api.post('/trading/stocks/cancel-transaction/', {
+        stock_tx_id: orderId
+      });
       return response.data;
     } catch (error) {
       throw handleApiError(error);

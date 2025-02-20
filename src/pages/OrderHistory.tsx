@@ -30,40 +30,22 @@ import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { tradingService, handleApiError } from '../services/apiService';
 import { format } from 'date-fns';
 
+interface Order {
+  id: string;
+  symbol: string;
+  order_type: string;
+  quantity: number;
+  price: number;
+  status: string;
+  created_at: string;
+  completed_at?: string;
+}
+
 const OrderHistory: React.FC = () => {
   const [filterSymbol, setFilterSymbol] = React.useState('');
   const [filterDateRange, setFilterDateRange] = React.useState('7'); // days
   const toast = useToast();
   const queryClient = useQueryClient();
-
-  // Fetch orders with filters
-  const { data: orders, isLoading } = useQuery(
-    ['orders', filterSymbol, filterDateRange],
-    () => tradingService.getOrders(),
-    {
-      select: (data) => {
-        let filteredOrders = [...data];
-        
-        // Apply symbol filter
-        if (filterSymbol) {
-          filteredOrders = filteredOrders.filter(
-            order => order.symbol.toLowerCase().includes(filterSymbol.toLowerCase())
-          );
-        }
-        
-        // Apply date filter
-        if (filterDateRange) {
-          const cutoffDate = new Date();
-          cutoffDate.setDate(cutoffDate.getDate() - parseInt(filterDateRange));
-          filteredOrders = filteredOrders.filter(
-            order => new Date(order.created_at) >= cutoffDate
-          );
-        }
-        
-        return filteredOrders;
-      }
-    }
-  );
 
   // Cancel order mutation
   const cancelMutation = useMutation(
@@ -77,7 +59,7 @@ const OrderHistory: React.FC = () => {
           duration: 3000,
         });
       },
-      onError: (error) => {
+      onError: (error: Error) => {
         toast({
           title: 'Failed to cancel order',
           description: handleApiError(error),
@@ -88,9 +70,118 @@ const OrderHistory: React.FC = () => {
     }
   );
 
+  // Cancel partial orders mutation
+  const cancelPartialMutation = useMutation(
+    () => tradingService.cancelPartialOrders(),
+    {
+      onSuccess: (response: { success: boolean; data?: any }) => {
+        queryClient.invalidateQueries('orders');
+        toast({
+          title: 'Partial orders cancelled',
+          description: `Cancelled ${response.data.cancelledOrders.length} orders`,
+          status: 'success',
+          duration: 3000,
+        });
+      },
+      onError: (error: Error) => {
+        toast({
+          title: 'Failed to cancel partial orders',
+          description: handleApiError(error),
+          status: 'error',
+          duration: 5000,
+        });
+      },
+    }
+  );
+
+  // Fetch orders with filters
+  const { data: orders, isLoading, error: ordersError } = useQuery(
+    ['orders', filterSymbol, filterDateRange],
+    async () => {
+      console.log('Fetching orders...');
+      const response = await tradingService.getOrders();
+      console.log('Orders response:', response);
+      return response;
+    },
+    {
+      onError: (error: any) => {
+        console.error('Error fetching orders:', error);
+        toast({
+          title: 'Failed to fetch orders',
+          description: error.message || 'An unexpected error occurred',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      },
+      select: (data: Order[]) => {
+        console.log('Processing orders data:', data);
+        let filteredOrders = [...data];
+        
+        // Apply symbol filter
+        if (filterSymbol) {
+          console.log('Applying symbol filter:', filterSymbol);
+          filteredOrders = filteredOrders.filter(
+            order => order.symbol.toLowerCase().includes(filterSymbol.toLowerCase())
+          );
+          console.log('Orders after symbol filter:', filteredOrders);
+        }
+        
+        // Apply date filter
+        if (filterDateRange) {
+          console.log('Applying date filter:', filterDateRange, 'days');
+          const cutoffDate = new Date();
+          cutoffDate.setDate(cutoffDate.getDate() - parseInt(filterDateRange));
+          filteredOrders = filteredOrders.filter(
+            order => new Date(order.created_at) >= cutoffDate
+          );
+          console.log('Orders after date filter:', filteredOrders);
+        }
+        
+        return filteredOrders;
+      }
+    }
+  );
+
+  // Add logging for active and completed orders
+  const [activeOrders, setActiveOrders] = React.useState<Order[]>([]);
+  const [completedOrders, setCompletedOrders] = React.useState<Order[]>([]);
+
+  React.useEffect(() => {
+    if (orders) {
+      const active = orders.filter((order: Order) => 
+        order.status === 'PENDING' || order.status === 'PARTIALLY_COMPLETE'
+      );
+      const completed = orders.filter((order: Order) => 
+        order.status !== 'PENDING' && order.status !== 'PARTIALLY_COMPLETE'
+      );
+      
+      setActiveOrders(active);
+      setCompletedOrders(completed);
+      
+      console.log('All orders:', orders);
+      console.log('Active orders:', active);
+      console.log('Completed orders:', completed);
+    }
+  }, [orders]);
+
+  // Add logging to price formatting
+  const formatPrice = (price: any) => {
+    console.log('Formatting price:', { original: price, type: typeof price });
+    const numPrice = Number(price);
+    console.log('Converted price:', { numPrice, type: typeof numPrice });
+    return numPrice.toFixed(2);
+  };
+
   const handleCancelOrder = (orderId: string) => {
     if (window.confirm('Are you sure you want to cancel this order?')) {
       cancelMutation.mutate(orderId);
+    }
+  };
+
+  const handleCancelPartialOrders = () => {
+    if (window.confirm('Are you sure you want to cancel all partially complete orders?')) {
+      cancelPartialMutation.mutate();
     }
   };
 
@@ -100,6 +191,7 @@ const OrderHistory: React.FC = () => {
       COMPLETED: 'green',
       CANCELLED: 'red',
       FAILED: 'red',
+      PARTIALLY_COMPLETE: 'blue',
     };
 
     return (
@@ -121,22 +213,20 @@ const OrderHistory: React.FC = () => {
     );
   }
 
-  const activeOrders = orders?.filter(order => order.status === 'PENDING') || [];
-  const completedOrders = orders?.filter(order => order.status !== 'PENDING') || [];
-
   return (
     <Container maxW="container.xl" py={8}>
       <Heading mb={6}>Order History</Heading>
 
-      {/* Filters */}
-      <Box mb={6}>
+      {/* Actions */}
+      <HStack w="100%" justify="space-between" mb={6}>
+        {/* Filters */}
         <HStack spacing={4} align="flex-end">
           <FormControl maxW="200px">
             <FormLabel>Symbol</FormLabel>
             <Input
               placeholder="Filter by symbol"
               value={filterSymbol}
-              onChange={(e) => setFilterSymbol(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilterSymbol(e.target.value)}
             />
           </FormControl>
           
@@ -144,7 +234,7 @@ const OrderHistory: React.FC = () => {
             <FormLabel>Time Range</FormLabel>
             <Select
               value={filterDateRange}
-              onChange={(e) => setFilterDateRange(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFilterDateRange(e.target.value)}
             >
               <option value="7">Last 7 days</option>
               <option value="30">Last 30 days</option>
@@ -154,7 +244,26 @@ const OrderHistory: React.FC = () => {
             </Select>
           </FormControl>
         </HStack>
-      </Box>
+
+        <HStack spacing={4}>
+          <Button
+            colorScheme="red"
+            onClick={handleCancelPartialOrders}
+            isLoading={cancelPartialMutation.isLoading}
+            data-cy="cancel-partial-orders"
+          >
+            Cancel Partial Orders
+          </Button>
+          <Button
+            colorScheme="blue"
+            variant="outline"
+            onClick={() => queryClient.invalidateQueries('orders')}
+            data-cy="refresh-orders"
+          >
+            Refresh
+          </Button>
+        </HStack>
+      </HStack>
 
       <Tabs>
         <TabList>
@@ -183,20 +292,20 @@ const OrderHistory: React.FC = () => {
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {activeOrders.map((order) => (
+                    {activeOrders.map((order: Order) => (
                       <Tr key={order.id}>
                         <Td>{order.id}</Td>
                         <Td>{order.symbol}</Td>
                         <Td>
                           <Badge
-                            colorScheme={order.type === 'BUY' ? 'green' : 'red'}
+                            colorScheme={order.order_type === 'BUY' ? 'green' : 'red'}
                           >
-                            {order.type}
+                            {order.order_type}
                           </Badge>
                         </Td>
                         <Td>{order.quantity}</Td>
-                        <Td>${order.price.toFixed(2)}</Td>
-                        <Td>${(order.quantity * order.price).toFixed(2)}</Td>
+                        <Td>${formatPrice(order.price)}</Td>
+                        <Td>${(order.quantity * Number(formatPrice(order.price))).toFixed(2)}</Td>
                         <Td>{getStatusBadge(order.status)}</Td>
                         <Td>{formatDateTime(order.created_at)}</Td>
                         <Td>
@@ -237,20 +346,20 @@ const OrderHistory: React.FC = () => {
                     </Tr>
                   </Thead>
                   <Tbody>
-                    {completedOrders.map((order) => (
+                    {completedOrders.map((order: Order) => (
                       <Tr key={order.id}>
                         <Td>{order.id}</Td>
                         <Td>{order.symbol}</Td>
                         <Td>
                           <Badge
-                            colorScheme={order.type === 'BUY' ? 'green' : 'red'}
+                            colorScheme={order.order_type === 'BUY' ? 'green' : 'red'}
                           >
-                            {order.type}
+                            {order.order_type}
                           </Badge>
                         </Td>
                         <Td>{order.quantity}</Td>
-                        <Td>${order.price.toFixed(2)}</Td>
-                        <Td>${(order.quantity * order.price).toFixed(2)}</Td>
+                        <Td>${formatPrice(order.price)}</Td>
+                        <Td>${(order.quantity * Number(formatPrice(order.price))).toFixed(2)}</Td>
                         <Td>{getStatusBadge(order.status)}</Td>
                         <Td>{formatDateTime(order.created_at)}</Td>
                         <Td>
