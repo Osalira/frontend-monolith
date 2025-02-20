@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Box,
   Container,
@@ -25,37 +25,89 @@ import {
   Button,
   VStack,
   HStack,
+  useToast,
 } from '@chakra-ui/react';
 import { useQuery } from 'react-query';
 import { Link as RouterLink } from 'react-router-dom';
 import { accountService, tradingService, handleApiError } from '../services/apiService';
 
 const Dashboard: React.FC = () => {
-  // Fetch account overview
-  const { data: accountData, isLoading: accountLoading } = useQuery(
-    'accountOverview',
-    () => accountService.getAccountDetails()
+  const toast = useToast();
+
+  // Remove account details query and use portfolio data instead
+  const { data: portfolio, isLoading: portfolioLoading, error: portfolioError } = useQuery(
+    'portfolio',
+    async () => {
+      console.log('Fetching portfolio...');
+      const response = await tradingService.getStockPortfolio();
+      console.log('Portfolio response:', response);
+      return response.data || { holdings: [], total_value: 0, active_orders: 0 };
+    },
+    {
+      onError: (error: any) => {
+        console.error('Error fetching portfolio:', error);
+        toast({
+          title: 'Error fetching portfolio',
+          description: handleApiError(error),
+          status: 'error',
+          duration: 5000,
+        });
+      }
+    }
   );
 
   // Fetch wallet balance
-  const { data: walletData, isLoading: walletLoading } = useQuery(
+  const { data: walletData, isLoading: walletLoading, error: walletError } = useQuery(
     'walletBalance',
-    () => accountService.getWalletBalance()
+    async () => {
+      console.log('Fetching wallet balance...');
+      const response = await accountService.getWalletBalance();
+      console.log('Wallet balance response:', response);
+      return response;
+    },
+    {
+      onError: (error: any) => {
+        console.error('Error fetching wallet balance:', error);
+        toast({
+          title: 'Error fetching wallet balance',
+          description: handleApiError(error),
+          status: 'error',
+          duration: 5000,
+        });
+      }
+    }
   );
 
   // Fetch recent orders
-  const { data: recentOrders, isLoading: ordersLoading } = useQuery(
+  const { data: recentOrders, isLoading: ordersLoading, error: ordersError } = useQuery(
     'recentOrders',
-    () => tradingService.getRecentOrders()
+    async () => {
+      console.log('Fetching recent orders...');
+      const response = await tradingService.getRecentOrders();
+      console.log('Recent orders response:', response);
+      return response.data?.results || [];
+    },
+    {
+      onError: (error: any) => {
+        console.error('Error fetching recent orders:', error);
+        toast({
+          title: 'Error fetching recent orders',
+          description: handleApiError(error),
+          status: 'error',
+          duration: 5000,
+        });
+      }
+    }
   );
 
-  // Fetch portfolio holdings
-  const { data: portfolio, isLoading: portfolioLoading } = useQuery(
-    'portfolio',
-    () => tradingService.getStockPortfolio()
-  );
+  // Add effect to log data changes
+  useEffect(() => {
+    console.log('Wallet Data:', walletData);
+    console.log('Recent Orders:', recentOrders);
+    console.log('Portfolio:', portfolio);
+  }, [walletData, recentOrders, portfolio]);
 
-  if (accountLoading || walletLoading || ordersLoading || portfolioLoading) {
+  if (portfolioLoading || walletLoading || ordersLoading) {
     return (
       <Center h="200px">
         <Spinner size="xl" />
@@ -91,12 +143,9 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardBody>
                 <Stat>
-                  <StatNumber>${accountData?.portfolio_value?.toFixed(2) || '0.00'}</StatNumber>
+                  <StatNumber>${portfolio?.total_value?.toFixed(2) || '0.00'}</StatNumber>
                   <StatHelpText>
-                    <StatArrow
-                      type={accountData?.portfolio_change >= 0 ? 'increase' : 'decrease'}
-                    />
-                    {accountData?.portfolio_change}%
+                    Total portfolio value
                   </StatHelpText>
                 </Stat>
               </CardBody>
@@ -122,7 +171,7 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardBody>
                 <Stat>
-                  <StatNumber>{accountData?.active_orders || 0}</StatNumber>
+                  <StatNumber>{portfolio?.active_orders || 0}</StatNumber>
                   <StatHelpText>
                     Pending transactions
                   </StatHelpText>
@@ -136,7 +185,7 @@ const Dashboard: React.FC = () => {
               </CardHeader>
               <CardBody>
                 <Stat>
-                  <StatNumber>{accountData?.total_trades || 0}</StatNumber>
+                  <StatNumber>{recentOrders?.length || 0}</StatNumber>
                   <StatHelpText>
                     Completed transactions
                   </StatHelpText>

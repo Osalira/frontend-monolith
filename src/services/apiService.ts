@@ -279,17 +279,17 @@ export const authService = {
 // Account Service
 export const accountService = {
   getAccountDetails: async (): Promise<AccountDetails> => {
-    const response = await api.get('/account/details');
+    const response = await api.get('/trading/account');
     return response.data;
   },
 
   getWalletBalance: async (): Promise<WalletData> => {
-    const response = await api.get('/account/wallet');
+    const response = await api.get('/trading/wallet/balance');
     return response.data;
   },
 
   addMoney: async (amount: number): Promise<WalletData> => {
-    const response = await api.post('/account/wallet/deposit', { amount });
+    const response = await api.post('/trading/wallet/deposit', { amount });
     return response.data;
   },
 };
@@ -304,7 +304,7 @@ export const tradingService = {
         timestamp: new Date().toISOString()
       });
 
-      const response = await api.post('/trading/stocks/create/', data);
+      const response = await api.post('/trading/stocks/create', data);
       
       if (!response.data.success) {
         throw new Error(response.data.data?.error || 'Failed to create stock');
@@ -319,19 +319,6 @@ export const tradingService = {
         requestData: data,
         timestamp: new Date().toISOString()
       });
-      
-      if ((error as ApiError).response?.status === 404) {
-        throw new Error('Stock creation endpoint not found - please check the API configuration');
-      }
-      
-      if ((error as ApiError).response?.status === 405) {
-        throw new Error('Invalid request method or endpoint');
-      }
-      
-      if ((error as any).code === 'ERR_NETWORK') {
-        throw new Error('Network error - please check your connection');
-      }
-      
       throw error;
     }
   },
@@ -380,40 +367,14 @@ export const tradingService = {
   },
 
   getStockPortfolio: async () => {
-    const response = await api.get('/api/stocks/portfolio/');
-    return response;
+    const response = await api.get('/trading/portfolio');
+    return response.data;
   },
 
   // Order Management
-  placeOrder: async (data: OrderRequest) => {
-    try {
-      console.log('Placing order:', {
-        endpoint: '/trading/orders/place/',
-        data,
-        timestamp: new Date().toISOString()
-      });
-
-      const token = localStorage.getItem('token');
-      const orderRequest = {
-        ...data,
-        token,
-        stock_id: data.stock_id,
-        is_buy: data.is_buy,
-        order_type: data.order_type,
-        quantity: data.quantity,
-        ...(data.order_type === 'LIMIT' && { price: data.price })
-      };
-
-      const response = await api.post('/trading/orders/place/', orderRequest);
-      return response.data;
-    } catch (error) {
-      console.error('Failed to place order:', {
-        error,
-        requestData: data,
-        timestamp: new Date().toISOString()
-      });
-      throw handleApiError(error);
-    }
+  placeOrder: async (orderData: OrderRequest) => {
+    const response = await api.post('/trading/orders/place', orderData);
+    return response.data;
   },
 
   getOrders: async () => {
@@ -433,15 +394,13 @@ export const tradingService = {
   },
 
   getRecentOrders: async () => {
-    const response = await api.get('/api/orders/recent/');
+    const response = await api.get('/trading/orders');
     return response.data;
   },
 
   cancelOrder: async (orderId: string) => {
-    const response = await api.post(`/api/stocks/cancel-transaction/`, {
-      stock_tx_id: orderId,
-    });
-    return response;
+    const response = await api.post(`/trading/orders/${orderId}/cancel`);
+    return response.data;
   },
 
   // Wallet Management
