@@ -304,7 +304,7 @@ export const tradingService = {
         timestamp: new Date().toISOString()
       });
 
-      const response = await api.post('/trading/stocks/create', data);
+      const response = await api.post('/trading/stocks/create/', data);
       
       if (!response.data.success) {
         throw new Error(response.data.data?.error || 'Failed to create stock');
@@ -373,7 +373,7 @@ export const tradingService = {
 
   // Order Management
   placeOrder: async (orderData: OrderRequest) => {
-    const response = await api.post('/trading/orders/place', orderData);
+    const response = await api.post('/trading/orders/place/', orderData);
     return response.data;
   },
 
