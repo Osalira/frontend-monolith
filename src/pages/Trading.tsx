@@ -35,8 +35,11 @@ interface Stock {
 
 interface StockHolding {
   stock_id: string;
+  symbol: string;
   quantity: number;
   average_price: number;
+  current_price: number;
+  profit_loss: number;
 }
 
 interface OrderResponse {
@@ -201,7 +204,7 @@ const Trading: React.FC = () => {
       }
 
       // Check if user owns the stock (either through portfolio or as company creator)
-      const ownedStock = ownedStocks.find((s: StockHolding) => String(s.stock_id) === String(orderData.stock_id));
+      const ownedStock = ownedStocks.find((s: StockHolding) => s.symbol === selectedStock.symbol);
       const isCompanyCreatedStock = companyCreatedStocks.some((s: Stock) => String(s.id) === String(orderData.stock_id));
       
       console.log('Owned stock:', ownedStock);

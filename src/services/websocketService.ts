@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { useQueryClient } from 'react-query';
 import { useToast } from '@chakra-ui/react';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { WebSocketState, TradeNotification } from '../types/trading';
 
 // Get the WebSocket URL from environment variables, defaulting to the current host if not set
@@ -9,7 +9,7 @@ const WS_URL = import.meta.env.VITE_WS_URL || `ws://${window.location.hostname}:
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const RECONNECT_BASE_DELAY = 1000; // 1 second
 const MAX_RECONNECT_DELAY = 30000; // 30 seconds
-const CONNECTION_TIMEOUT = 10000; // 10 seconds
+const CONNECTION_TIMEOUT = 90000; // 90 seconds
 
 export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     socket: null,
@@ -33,7 +33,37 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
 
         try {
             console.log(`Connecting to WebSocket at ${WS_URL}`);
-            const ws = new WebSocket(WS_URL);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.error('No authentication token found');
+                return;
+            }
+
+            // Create WebSocket with auth token
+            const ws = new WebSocket(WS_URL, ['trading-protocol']);
+            
+            // Add authorization header to the first message
+            ws.onopen = function(this: WebSocket) {
+                console.log('WebSocket connection established');
+                useWebSocketStore.setState({ 
+                    isConnected: true,
+                    reconnectAttempts: 0
+                });
+
+                // Send authorization
+                this.send(JSON.stringify({
+                    type: 'auth',
+                    token: token
+                }));
+
+                // Set up heartbeat
+                const heartbeat = setInterval(() => {
+                    if (this.readyState === WebSocket.OPEN) {
+                        this.send(JSON.stringify({ type: 'heartbeat' }));
+                    }
+                }, HEARTBEAT_INTERVAL);
+                useWebSocketStore.setState({ heartbeatInterval: heartbeat as unknown as number });
+            };
             
             // Set connection timeout
             const timeout = setTimeout(() => {
@@ -43,9 +73,8 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
                 }
             }, CONNECTION_TIMEOUT);
 
-            set({ socket: ws });
+            set({ socket: ws, connectionTimeout: timeout });
 
-            // Don't set up handlers here - they will be set up in the useWebSocket hook
         } catch (error) {
             console.error('Failed to create WebSocket:', error);
             set({ socket: null, isConnected: false });
@@ -53,132 +82,98 @@ export const useWebSocketStore = create<WebSocketState>((set, get) => ({
     },
 
     disconnect: () => {
-        const { socket, heartbeatInterval } = get();
+        const { socket, heartbeatInterval, connectionTimeout } = get();
         if (heartbeatInterval) clearInterval(heartbeatInterval);
+        if (connectionTimeout) clearTimeout(connectionTimeout);
         if (socket) {
             socket.close();
-            set({ socket: null, isConnected: false, heartbeatInterval: undefined });
+            set({ 
+                socket: null, 
+                isConnected: false, 
+                heartbeatInterval: undefined,
+                connectionTimeout: null 
+            });
         }
     }
 }));
 
-export function useWebSocket() {
+export const useWebSocket = () => {
+    const [isConnected, setIsConnected] = useState(false);
+    const socket = useRef<WebSocket | null>(null);
+    const reconnectAttempts = useRef(0);
+    const maxReconnectAttempts = 5;
     const queryClient = useQueryClient();
     const toast = useToast();
-    const reconnectAttemptsRef = useRef(0);
-    const socketRef = useRef<WebSocket | null>(null);
 
-    const handleTradeNotification = useCallback((notification: TradeNotification) => {
-        queryClient.invalidateQueries(['orders']);
-        
-        toast({
-            title: 'Trade Executed',
-            description: `${notification.trade.symbol}: ${notification.trade.quantity} shares @ $${notification.trade.price}`,
-            status: 'success',
-            duration: 5000,
-            isClosable: true,
-            position: 'top-right',
-        });
-    }, [queryClient, toast]);
+    const connect = useCallback(() => {
+        try {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                console.warn('No authentication token found');
+                return;
+            }
+
+            const ws = new WebSocket(WS_URL);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                // Send authentication immediately after connection
+                ws.send(JSON.stringify({ type: 'auth', token }));
+                setIsConnected(true);
+                reconnectAttempts.current = 0;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'trade') {
+                        // Invalidate queries to refresh data
+                        queryClient.invalidateQueries(['orders']);
+                        queryClient.invalidateQueries(['portfolio']);
+                        // Show trade notification
+                        toast({
+                            title: 'Trade Executed',
+                            description: `${data.trade.quantity} shares of ${data.trade.symbol} at $${data.trade.price}`,
+                            status: 'success',
+                            duration: 5000,
+                            isClosable: true,
+                        });
+                    }
+                } catch (error) {
+                    console.error('Error processing WebSocket message:', error);
+                }
+            };
+
+            ws.onclose = (event) => {
+                console.log(`WebSocket closed: ${event.code}`);
+                setIsConnected(false);
+                
+                if (reconnectAttempts.current < maxReconnectAttempts) {
+                    const timeout = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000);
+                    console.log(`Attempting to reconnect in ${timeout}ms (attempt ${reconnectAttempts.current + 1}/${maxReconnectAttempts})`);
+                    setTimeout(connect, timeout);
+                    reconnectAttempts.current++;
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            socket.current = ws;
+        } catch (error) {
+            console.error('Error creating WebSocket connection:', error);
+        }
+    }, [queryClient]);
 
     useEffect(() => {
-        if (socketRef.current) return;
-
-        const setupSocket = () => {
-            try {
-                const ws = new WebSocket(WS_URL);
-                socketRef.current = ws;
-
-                ws.onopen = () => {
-                    console.log('WebSocket connection established');
-                    useWebSocketStore.setState({ isConnected: true });
-                    reconnectAttemptsRef.current = 0;
-
-                    // Set up heartbeat
-                    const heartbeat = setInterval(() => {
-                        if (ws.readyState === WebSocket.OPEN) {
-                            ws.send(JSON.stringify({ type: 'heartbeat' }));
-                        }
-                    }, HEARTBEAT_INTERVAL);
-                    useWebSocketStore.setState({ heartbeatInterval: heartbeat as unknown as number });
-                };
-
-                ws.onmessage = (event: MessageEvent) => {
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.type === 'pong') return;
-                        handleTradeNotification(data as TradeNotification);
-                    } catch (error) {
-                        console.error('Error processing WebSocket message:', error);
-                    }
-                };
-
-                ws.onclose = (event: CloseEvent) => {
-                    console.log('WebSocket closed:', event.code, event.reason);
-                    const { heartbeatInterval } = useWebSocketStore.getState();
-                    
-                    if (heartbeatInterval) {
-                        clearInterval(heartbeatInterval);
-                    }
-                    
-                    useWebSocketStore.setState({ 
-                        isConnected: false, 
-                        heartbeatInterval: undefined 
-                    });
-                    socketRef.current = null;
-                    
-                    if (event.code !== 1000) {
-                        console.log('Abnormal WebSocket closure, attempting reconnect...');
-                        if (reconnectAttemptsRef.current < 5) {
-                            const delay = Math.min(
-                                RECONNECT_BASE_DELAY * Math.pow(2, reconnectAttemptsRef.current),
-                                MAX_RECONNECT_DELAY
-                            );
-                            reconnectAttemptsRef.current += 1;
-                            console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttemptsRef.current}/5)`);
-                            setTimeout(setupSocket, delay);
-                        } else {
-                            console.error('Failed to reconnect: Max reconnection attempts reached');
-                            toast({
-                                title: 'Connection Lost',
-                                description: 'Unable to reconnect to server. Please refresh the page.',
-                                status: 'error',
-                                duration: null,
-                                isClosable: true,
-                            });
-                        }
-                    }
-                };
-
-                ws.onerror = (error: Event) => {
-                    console.error('WebSocket error:', error);
-                };
-
-            } catch (error) {
-                console.error('Failed to create WebSocket:', error);
-                socketRef.current = null;
-                useWebSocketStore.setState({ isConnected: false });
-            }
-        };
-
-        setupSocket();
-
+        connect();
         return () => {
-            if (socketRef.current) {
-                socketRef.current.close();
-                socketRef.current = null;
+            if (socket.current) {
+                socket.current.close();
             }
-            const { heartbeatInterval } = useWebSocketStore.getState();
-            if (heartbeatInterval) {
-                clearInterval(heartbeatInterval);
-            }
-            useWebSocketStore.setState({ 
-                isConnected: false, 
-                heartbeatInterval: undefined 
-            });
-            reconnectAttemptsRef.current = 0;
         };
-    }, [handleTradeNotification, toast]);
+    }, [connect]);
 
-    return useWebSocketStore((state) => state.isConnected);
-} 
+    return isConnected;
+}; 

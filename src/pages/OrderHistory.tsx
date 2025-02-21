@@ -32,28 +32,10 @@ import { useQuery, useMutation, useQueryClient } from 'react-query';
 import { tradingService, handleApiError } from '../services/apiService';
 import { format } from 'date-fns';
 import { useWebSocket } from '../services/websocketService';
+import { Order, OrderResponse, OrderStatus } from '../types/trading';
 
-interface OrderResponse {
-  success: boolean;
-  data: {
-    results: Order[];
-  };
-}
-
-interface Order {
-  id: string;
-  symbol: string;
-  order_type: string;
-  quantity: number;
-  executed_quantity?: number;
-  price: number;
-  status: OrderStatus;
-  created_at: string;
-  completed_at?: string;
-  type: string;
-}
-
-type OrderStatus = 'PENDING' | 'PARTIALLY_COMPLETE' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+// Keep only the OrderStatus type if needed for local use
+// type OrderStatus = 'PENDING' | 'PARTIALLY_COMPLETE' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
 
 const OrderHistory: React.FC = () => {
   const [symbolFilter, setSymbolFilter] = useState('');

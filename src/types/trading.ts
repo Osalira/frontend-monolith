@@ -5,8 +5,10 @@ export type OrderMethod = 'MARKET' | 'LIMIT';
 export interface Order {
     id: string;
     symbol: string;
-    type: OrderType;
+    order_type: OrderType;
+    type: string;  // For backward compatibility
     quantity: number;
+    original_quantity: number;
     executed_quantity?: number;
     price: number;
     status: OrderStatus;

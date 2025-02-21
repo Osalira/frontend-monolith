@@ -61,6 +61,7 @@ export interface WalletData {
 }
 
 export interface StockHolding {
+    stock_id: string;
     symbol: string;
     quantity: number;
     average_price: number;

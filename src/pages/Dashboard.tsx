@@ -36,14 +36,37 @@ const Dashboard: React.FC = () => {
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  // Remove account details query and use portfolio data instead
+  // Helper function to merge duplicate holdings
+  const mergeHoldings = (holdings: any[]) => {
+    const merged = holdings.reduce((acc: any, holding: any) => {
+      const existing = acc[holding.symbol];
+      if (existing) {
+        // Merge quantities and recalculate average price
+        const totalQuantity = existing.quantity + holding.quantity;
+        const totalValue = (existing.quantity * existing.average_price) + 
+                         (holding.quantity * holding.average_price);
+        existing.quantity = totalQuantity;
+        existing.average_price = totalValue / totalQuantity;
+      } else {
+        acc[holding.symbol] = { ...holding };
+      }
+      return acc;
+    }, {});
+    return Object.values(merged);
+  };
+
+  // Fetch portfolio with merged holdings
   const { data: portfolio, isLoading: portfolioLoading, error: portfolioError } = useQuery(
     'portfolio',
     async () => {
       console.log('Fetching portfolio...');
       const response = await tradingService.getStockPortfolio();
       console.log('Portfolio response:', response);
-      return response.data || { holdings: [], total_value: 0, active_orders: 0 };
+      const mergedData = {
+        ...response.data,
+        holdings: mergeHoldings(response.data?.holdings || [])
+      };
+      return mergedData || { holdings: [], total_value: 0, active_orders: 0 };
     },
     {
       onError: (error: any) => {
@@ -117,7 +140,29 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const getStatusBadge = (status: string) => {
+  // Helper function to determine if an order is complete
+  const isOrderComplete = (order: any) => {
+    return order.status === 'COMPLETED' || 
+           (order.status === 'PARTIALLY_COMPLETE' && order.quantity === 0);
+  };
+
+  // Helper function to determine if an order can be cancelled
+  const canCancelOrder = (order: any) => {
+    return order.status === 'PENDING' || 
+           (order.status === 'PARTIALLY_COMPLETE' && order.quantity > 0);
+  };
+
+  // Helper function to get order progress
+  const getOrderProgress = (order: any) => {
+    if (order.status === 'PARTIALLY_COMPLETE') {
+      const executedQty = order.original_quantity - order.quantity;
+      return `${executedQty}/${order.original_quantity}`;
+    }
+    return order.quantity;
+  };
+
+  // Helper function to get status badge
+  const getStatusBadge = (status: string, order: any) => {
     const statusColors: { [key: string]: string } = {
       PENDING: 'yellow',
       COMPLETED: 'green',
@@ -126,24 +171,15 @@ const Dashboard: React.FC = () => {
       PARTIALLY_COMPLETE: 'blue'
     };
 
+    const displayStatus = status === 'PARTIALLY_COMPLETE' 
+      ? `PARTIAL (${getOrderProgress(order)})` 
+      : status;
+
     return (
       <Badge colorScheme={statusColors[status] || 'gray'}>
-        {status}
+        {displayStatus}
       </Badge>
     );
-  };
-
-  // Helper function to determine if an order can be cancelled
-  const canCancelOrder = (order: any) => {
-    return order.status === 'PENDING' || order.status === 'PARTIALLY_COMPLETE';
-  };
-
-  // Helper function to determine if an order is complete
-  const isOrderComplete = (order: any) => {
-    if (order.order_type === 'SELL') {
-      return order.status === 'COMPLETED';
-    }
-    return order.status === 'COMPLETED';
   };
 
   // Function to handle order cancellation
@@ -333,7 +369,7 @@ const Dashboard: React.FC = () => {
                       </Td>
                       <Td>{order.quantity}</Td>
                       <Td>${Number(order.price).toFixed(2)}</Td>
-                      <Td>{getStatusBadge(order.status)}</Td>
+                      <Td>{getStatusBadge(order.status, order)}</Td>
                       <Td>{new Date(order.created_at).toLocaleString()}</Td>
                       <Td>
                         {canCancelOrder(order) && (
