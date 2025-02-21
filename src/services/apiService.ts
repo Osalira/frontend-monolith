@@ -369,8 +369,35 @@ export const tradingService = {
 
     // Order Management
     placeOrder: async (orderData: OrderRequest) => {
-        const response = await api.post('/trading/orders/place/', orderData);
-        return response.data;
+        try {
+            console.log('Placing order:', {
+                ...orderData,
+                timestamp: new Date().toISOString()
+            });
+
+            const response = await api.post('/trading/orders/place/', {
+                stock_id: orderData.stock_id,
+                is_buy: orderData.is_buy,
+                order_type: orderData.order_type,
+                quantity: orderData.quantity,
+                price: orderData.price  // Always include price
+            });
+            
+            if (!response.data.success) {
+                throw new Error(response.data.data?.error || 'Failed to place order');
+            }
+            
+            return response.data;
+        } catch (error) {
+            console.error('Failed to place order:', {
+                error,
+                status: (error as ApiError).response?.status,
+                data: (error as ApiError).response?.data,
+                requestData: orderData,
+                timestamp: new Date().toISOString()
+            });
+            throw error;
+        }
     },
 
     getOrders: async (symbolFilter?: string, dateFilter?: string): Promise<OrderResponse> => {

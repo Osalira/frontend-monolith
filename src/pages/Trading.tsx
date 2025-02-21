@@ -172,50 +172,17 @@ const Trading: React.FC = () => {
 
   const validateForm = () => {
     console.log('Starting form validation with data:', orderData);
-    console.log('User is company account:', authService.isCompanyAccount());
     
     const newErrors: { [key: string]: string } = {};
     if (!orderData.stock_id) newErrors.stock_id = 'Stock is required';
     if (orderData.quantity <= 0) newErrors.quantity = 'Quantity must be positive';
-    if (orderData.order_type === 'LIMIT' && !orderData.price) {
-      newErrors.price = 'Price is required for limit orders';
-    }
-    if (orderData.order_type === 'LIMIT' && orderData.price && orderData.price <= 0) {
-      newErrors.price = 'Price must be positive for limit orders';
-    }
-
-    // Validate sell orders
+    
+    // Validate price for sell orders (limit orders)
     if (!orderData.is_buy) {
-      console.log('Validating sell order...');
-      
-      // Check in both regular stocks and company created stocks
-      const selectedStock = stocks.find((s: Stock) => String(s.id) === String(orderData.stock_id)) || 
-                          companyCreatedStocks.find((s: Stock) => String(s.id) === String(orderData.stock_id));
-      
-      console.log('Selected stock:', selectedStock);
-      console.log('Looking for stock with ID:', orderData.stock_id);
-      console.log('Available stocks:', stocks);
-      console.log('Company created stocks:', companyCreatedStocks);
-      
-      if (!selectedStock) {
-        newErrors.stock_id = 'Invalid stock selected';
-        console.log('Error: Invalid stock selected');
-        return false;
-      }
-
-      // Check if user owns the stock (either through portfolio or as company creator)
-      const ownedStock = ownedStocks.find((s: StockHolding) => s.symbol === selectedStock.symbol);
-      const isCompanyCreatedStock = companyCreatedStocks.some((s: Stock) => String(s.id) === String(orderData.stock_id));
-      
-      console.log('Owned stock:', ownedStock);
-      console.log('Is company created stock:', isCompanyCreatedStock);
-
-      if (!ownedStock && !isCompanyCreatedStock) {
-        newErrors.stock_id = 'You can only sell stocks you own or created';
-        console.log('Error: Stock not owned or created by company');
-      } else if (ownedStock && !isCompanyCreatedStock && ownedStock.quantity < orderData.quantity) {
-        newErrors.quantity = 'Insufficient shares to sell';
-        console.log('Error: Insufficient shares to sell');
+      if (!orderData.price) {
+        newErrors.price = 'Price is required for limit orders';
+      } else if (orderData.price <= 0) {
+        newErrors.price = 'Price must be positive for limit orders';
       }
     }
 
@@ -315,7 +282,7 @@ const Trading: React.FC = () => {
                   >
                     {stocks.map((stock: any) => (
                       <option key={stock.id} value={stock.id}>
-                        {stock.name} ({stock.symbol}) - ${stock.current_price}
+                        {stock.name} ({stock.symbol})
                       </option>
                     ))}
                   </Select>
