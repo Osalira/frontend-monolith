@@ -1,141 +1,94 @@
-import React from 'react';
-import {
-  ChakraProvider,
-  Box,
-  ColorModeScript,
-} from '@chakra-ui/react';
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-} from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from 'react-query';
-import { ReactQueryDevtools } from 'react-query/devtools';
-import theme from './theme';
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import './App.css';
 
 // Components
-import Header from './components/Header';
-import Footer from './components/Footer';
+import Navbar from './components/common/Navbar';
+import Footer from './components/common/Footer';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 
 // Pages
-import Login from './pages/Login';
-import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Trading from './pages/Trading';
-import Account from './pages/Account';
-import OrderHistory from './pages/OrderHistory';
-import CompanyStocks from './pages/CompanyStocks';
+import HomePage from './pages/HomePage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
+import DashboardPage from './pages/DashboardPage';
+import PortfolioPage from './pages/PortfolioPage';
+import TradePage from './pages/TradePage';
+import WalletPage from './pages/WalletPage';
+import TransactionsPage from './pages/TransactionsPage';
+import NotFoundPage from './pages/NotFoundPage';
 
-// Services
-import { authService } from './services/apiService';
-
-// Create a client
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      retry: 1,
-    },
-  },
-});
-
-interface ProtectedRouteProps {
-  children: React.ReactNode;
-}
-
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const location = useLocation();
-  const isAuthenticated = authService.isAuthenticated();
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
-  }
-
-  return <>{children}</>;
-};
+// Context
+import { AuthProvider } from './context/AuthContext';
+import { StockProvider } from './context/StockContext';
 
 const App: React.FC = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <ChakraProvider theme={theme}>
-        <ColorModeScript initialColorMode={theme.config.initialColorMode} />
+    <AuthProvider>
+      <StockProvider>
         <Router>
-          <Box minH="100vh" display="flex" flexDirection="column">
-            <Header />
-            
-            <Box flex="1" py={8}>
+          <div className="app-container">
+            <Navbar />
+            <main className="main-content">
               <Routes>
-                {/* Public Routes */}
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-
+                <Route path="/" element={<HomePage />} />
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<RegisterPage />} />
+                
                 {/* Protected Routes */}
-                <Route
-                  path="/dashboard"
+                <Route 
+                  path="/dashboard" 
                   element={
                     <ProtectedRoute>
-                      <Dashboard />
+                      <DashboardPage />
                     </ProtectedRoute>
-                  }
+                  } 
                 />
-                <Route
-                  path="/trading"
+                <Route 
+                  path="/portfolio" 
                   element={
                     <ProtectedRoute>
-                      <Trading />
+                      <PortfolioPage />
                     </ProtectedRoute>
-                  }
+                  } 
                 />
-                <Route
-                  path="/order-history"
+                <Route 
+                  path="/trade" 
                   element={
                     <ProtectedRoute>
-                      <OrderHistory />
+                      <TradePage />
                     </ProtectedRoute>
-                  }
+                  } 
                 />
-                <Route
-                  path="/account"
+                <Route 
+                  path="/wallet" 
                   element={
                     <ProtectedRoute>
-                      <Account />
+                      <WalletPage />
                     </ProtectedRoute>
-                  }
+                  } 
                 />
-                <Route
-                  path="/company/stocks"
+                <Route 
+                  path="/transactions" 
                   element={
                     <ProtectedRoute>
-                      <CompanyStocks />
+                      <TransactionsPage />
                     </ProtectedRoute>
-                  }
+                  } 
                 />
-
-                {/* Redirect root to dashboard if authenticated, otherwise to login */}
-                <Route
-                  path="/"
-                  element={
-                    authService.isAuthenticated() ? (
-                      <Navigate to="/dashboard" replace />
-                    ) : (
-                      <Navigate to="/login" replace />
-                    )
-                  }
-                />
-
-                {/* Catch all route */}
-                <Route path="*" element={<Navigate to="/" replace />} />
+                
+                {/* 404 Page */}
+                <Route path="*" element={<NotFoundPage />} />
               </Routes>
-            </Box>
-
+            </main>
             <Footer />
-          </Box>
+            <ToastContainer position="bottom-right" />
+          </div>
         </Router>
-      </ChakraProvider>
-      <ReactQueryDevtools initialIsOpen={false} />
-    </QueryClientProvider>
+      </StockProvider>
+    </AuthProvider>
   );
 };
 
