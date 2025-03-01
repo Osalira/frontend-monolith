@@ -82,15 +82,25 @@ const TradePage: React.FC = () => {
     
     try {
       setIsSubmitting(true);
-      await placeOrder(orderData);
+      
+      // For market orders, don't send a price - let the matching engine determine it
+      const orderPayload = {
+        ...orderData
+      };
+      
+      // Remove price field completely for market orders
+      if (orderData.order_type === 'Market') {
+        delete orderPayload.price;
+      }
+      
+      await placeOrder(orderPayload);
       setSuccess(`${orderData.is_buy ? 'Buy' : 'Sell'} order placed successfully`);
       
       // Reset form after successful submission
       setOrderData(prev => ({
         ...prev,
         quantity: 1,
-        price: orderData.order_type === 'Market' ? 
-          (stocks.find(s => s.id === orderData.stock_id)?.current_price || 0) : 0
+        price: orderData.order_type === 'Market' ? 0 : prev.price
       }));
     } catch (err: any) {
       setError(err.message || 'Failed to place order');
