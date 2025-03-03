@@ -24,16 +24,18 @@ const TransactionsPage: React.FC = () => {
   };
   
   const getStatusClass = (status: string) => {
-    switch (status) {
-      case 'Completed':
+    const statusLower = status?.toLowerCase() || '';
+    
+    switch (statusLower) {
+      case 'completed':
         return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300';
-      case 'Pending':
+      case 'pending':
         return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
-      case 'Partially_complete':
+      case 'partially_complete':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
-      case 'Cancelled':
+      case 'cancelled':
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
-      case 'Rejected':
+      case 'rejected':
         return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
@@ -113,7 +115,10 @@ const TransactionsPage: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
-                      {(transaction.status === 'Pending' || transaction.status === 'Partially_complete' || transaction.status === 'IN_PROGRESS') && (
+                      {(transaction.status === 'PENDING' || 
+                        transaction.status === 'Partially_complete' || 
+                        transaction.status === 'PARTIALLY_COMPLETE' || 
+                        transaction.status === 'IN_PROGRESS') && (
                         <button
                           onClick={() => handleCancelOrder(transaction.stock_tx_id || transaction.id)}
                           disabled={cancelInProgress === (transaction.stock_tx_id || transaction.id)}

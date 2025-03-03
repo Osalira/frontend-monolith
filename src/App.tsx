@@ -34,68 +34,66 @@ const App: React.FC = () => {
               <Navbar />
               <div className="w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
                 <main className="flex-grow py-8">
-                  <div className="mx-auto max-w-4xl">
-                    <Routes>
-                      {/* Redirect from root to login page */}
-                      <Route path="/" element={<Navigate to="/login" replace />} />
-                      <Route path="/login" element={<LoginPage />} />
-                      <Route path="/register" element={<RegisterPage />} />
-                      
-                      {/* Protected Routes */}
-                      <Route 
-                        path="/dashboard" 
-                        element={
-                          <ProtectedRoute>
-                            <DashboardPage />
-                          </ProtectedRoute>
-                        } 
-                      />
-                      <Route 
-                        path="/portfolio" 
-                        element={
-                          <ProtectedRoute>
-                            <PortfolioPage />
-                          </ProtectedRoute>
-                        } 
-                      />
-                      <Route 
-                        path="/trade" 
-                        element={
-                          <ProtectedRoute>
-                            <TradePage />
-                          </ProtectedRoute>
-                        } 
-                      />
-                      <Route 
-                        path="/wallet" 
-                        element={
-                          <ProtectedRoute>
-                            <WalletPage />
-                          </ProtectedRoute>
-                        } 
-                      />
-                      <Route 
-                        path="/transactions" 
-                        element={
-                          <ProtectedRoute>
-                            <TransactionsPage />
-                          </ProtectedRoute>
-                        } 
-                      />
-                      
-                      <Route 
-                        path="/admin" 
-                        element={
-                          <ProtectedRoute>
-                            <AdminPage />
-                          </ProtectedRoute>
-                        } 
-                      />
-                      
-                      {/* 404 Page */}
-                      <Route path="*" element={<NotFoundPage />} />
-                    </Routes>
-                  </div>
+                  <Routes>
+                    {/* Redirect from root to login page */}
+                    <Route path="/" element={<Navigate to="/login" replace />} />
+                    <Route path="/login" element={<LoginPage />} />
+                    <Route path="/register" element={<RegisterPage />} />
+                    
+                    {/* Protected Routes */}
+                    <Route 
+                      path="/dashboard" 
+                      element={
+                        <ProtectedRoute>
+                          <DashboardPage />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/portfolio" 
+                      element={
+                        <ProtectedRoute>
+                          <PortfolioPage />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/trade" 
+                      element={
+                        <ProtectedRoute>
+                          <TradePage />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/wallet" 
+                      element={
+                        <ProtectedRoute>
+                          <WalletPage />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    <Route 
+                      path="/transactions" 
+                      element={
+                        <ProtectedRoute>
+                          <TransactionsPage />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    
+                    <Route 
+                      path="/admin" 
+                      element={
+                        <ProtectedRoute>
+                          <AdminPage />
+                        </ProtectedRoute>
+                      } 
+                    />
+                    
+                    {/* 404 Page */}
+                    <Route path="*" element={<NotFoundPage />} />
+                  </Routes>
                 </main>
               </div>
               <Footer />

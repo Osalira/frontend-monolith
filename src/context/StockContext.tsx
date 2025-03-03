@@ -167,14 +167,59 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         
         if (Array.isArray(responseData)) {
           // Direct array of portfolio items
-          setPortfolio(responseData);
+          // Map backend fields to match frontend interface
+          const mappedPortfolio = responseData.map((item: any) => ({
+            ...item,
+            // Map quantity_owned to quantity for consistency
+            quantity: item.quantity_owned || item.quantity || 0,
+            // Ensure other required fields exist
+            stock_symbol: item.stock_symbol || '',
+            stock_name: item.stock_name || '',
+            average_price: Number(item.average_price) || 0,
+            current_price: Number(item.current_price) || 0,
+            total_value: Number(item.total_value) || 0,
+            profit_loss: Number(item.profit_loss) || 0,
+            profit_loss_percentage: Number(item.profit_loss_percentage) || 0
+          }));
+          console.log('Mapped portfolio data:', mappedPortfolio);
+          setPortfolio(mappedPortfolio);
         } else if (responseData && typeof responseData === 'object') {
           // It might be an object with a portfolio property or other structure
           if (Array.isArray(responseData.portfolio)) {
-            setPortfolio(responseData.portfolio);
+            // Map backend fields to match frontend interface
+            const mappedPortfolio = responseData.portfolio.map((item: any) => ({
+              ...item,
+              // Map quantity_owned to quantity for consistency
+              quantity: item.quantity_owned || item.quantity || 0,
+              // Ensure other required fields exist
+              stock_symbol: item.stock_symbol || '',
+              stock_name: item.stock_name || '',
+              average_price: Number(item.average_price) || 0,
+              current_price: Number(item.current_price) || 0,
+              total_value: Number(item.total_value) || 0,
+              profit_loss: Number(item.profit_loss) || 0,
+              profit_loss_percentage: Number(item.profit_loss_percentage) || 0
+            }));
+            console.log('Mapped portfolio data (from object.portfolio):', mappedPortfolio);
+            setPortfolio(mappedPortfolio);
           } else if (responseData.portfolio && typeof responseData.portfolio === 'object') {
             // Single portfolio item as an object
-            setPortfolio([responseData.portfolio]);
+            const item: any = responseData.portfolio;
+            const mappedItem = {
+              ...item,
+              // Map quantity_owned to quantity for consistency
+              quantity: item.quantity_owned || item.quantity || 0,
+              // Ensure other required fields exist
+              stock_symbol: item.stock_symbol || '',
+              stock_name: item.stock_name || '',
+              average_price: Number(item.average_price) || 0,
+              current_price: Number(item.current_price) || 0,
+              total_value: Number(item.total_value) || 0,
+              profit_loss: Number(item.profit_loss) || 0,
+              profit_loss_percentage: Number(item.profit_loss_percentage) || 0
+            };
+            console.log('Mapped single portfolio item:', mappedItem);
+            setPortfolio([mappedItem]);
           } else {
             console.error('Unexpected portfolio data format:', responseData);
             setPortfolio([]);
