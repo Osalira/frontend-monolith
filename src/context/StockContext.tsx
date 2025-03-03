@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 import { stockApi } from '../api/apiService';
 import { useAuth } from './AuthContext';
 import { toast } from 'react-toastify';
@@ -92,54 +92,128 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     transactions: false,
   });
   
-  // Fetch stock prices
-  const fetchStocks = async () => {
+  // Fetch stock prices - using useCallback to memoize the function
+  const fetchStocks = useCallback(async () => {
     try {
       setIsLoading(prev => ({ ...prev, stocks: true }));
       const response = await stockApi.getStockPrices();
-      setStocks(response.data);
+      
+      console.log('Stock prices response:', response.data);
+      
+      // Handle the standard response format
+      if (response.data && response.data.success === true) {
+        // The data property might contain the array directly or another nested object
+        const responseData = response.data.data;
+        
+        if (Array.isArray(responseData)) {
+          setStocks(responseData);
+        } else {
+          console.error('Unexpected stocks data format:', responseData);
+          setStocks([]);
+        }
+      } else if (Array.isArray(response.data)) {
+        // Fallback for direct array responses
+        setStocks(response.data);
+      } else {
+        console.error('Invalid stocks response format:', response.data);
+        setStocks([]);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to fetch stock prices');
       console.error('Error fetching stocks:', error);
+      setStocks([]);
     } finally {
       setIsLoading(prev => ({ ...prev, stocks: false }));
     }
-  };
+  }, []);
   
-  // Fetch portfolio
-  const fetchPortfolio = async () => {
+  // Fetch portfolio - using useCallback to memoize the function
+  const fetchPortfolio = useCallback(async () => {
     if (!isAuthenticated) return;
     
     try {
       setIsLoading(prev => ({ ...prev, portfolio: true }));
       const response = await stockApi.getStockPortfolio();
-      setPortfolio(response.data);
+      
+      console.log('Portfolio response:', response.data);
+      
+      // Handle the standard response format
+      if (response.data && response.data.success === true) {
+        const responseData = response.data.data;
+        
+        if (Array.isArray(responseData)) {
+          // Direct array of portfolio items
+          setPortfolio(responseData);
+        } else if (responseData && typeof responseData === 'object') {
+          // It might be an object with a portfolio property or other structure
+          if (Array.isArray(responseData.portfolio)) {
+            setPortfolio(responseData.portfolio);
+          } else if (responseData.portfolio && typeof responseData.portfolio === 'object') {
+            // Single portfolio item as an object
+            setPortfolio([responseData.portfolio]);
+          } else {
+            console.error('Unexpected portfolio data format:', responseData);
+            setPortfolio([]);
+          }
+        } else {
+          console.error('Invalid portfolio data format:', responseData);
+          setPortfolio([]);
+        }
+      } else {
+        console.error('Invalid portfolio response format:', response.data);
+        setPortfolio([]);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to fetch portfolio');
       console.error('Error fetching portfolio:', error);
+      setPortfolio([]);
     } finally {
       setIsLoading(prev => ({ ...prev, portfolio: false }));
     }
-  };
+  }, [isAuthenticated]);
   
-  // Fetch transactions
-  const fetchTransactions = async (params?: { limit?: number; offset?: number }) => {
+  // Fetch transactions - using useCallback to memoize the function
+  const fetchTransactions = useCallback(async (params?: { limit?: number; offset?: number }) => {
     if (!isAuthenticated) return;
     
     try {
       setIsLoading(prev => ({ ...prev, transactions: true }));
       const response = await stockApi.getStockTransactions(params);
-      setTransactions(response.data.transactions);
+      
+      console.log('Transactions response:', response.data);
+      
+      // Handle the standard response format
+      if (response.data && response.data.success === true) {
+        const responseData = response.data.data;
+        
+        if (responseData && Array.isArray(responseData.transactions)) {
+          // Nested transactions array
+          setTransactions(responseData.transactions);
+        } else if (Array.isArray(responseData)) {
+          // Direct array of transactions
+          setTransactions(responseData);
+        } else {
+          console.error('Unexpected transactions data format:', responseData);
+          setTransactions([]);
+        }
+      } else if (response.data && Array.isArray(response.data.transactions)) {
+        // Legacy format with transactions at top level
+        setTransactions(response.data.transactions);
+      } else {
+        console.error('Invalid transactions response format:', response.data);
+        setTransactions([]);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to fetch transactions');
       console.error('Error fetching transactions:', error);
+      setTransactions([]);
     } finally {
       setIsLoading(prev => ({ ...prev, transactions: false }));
     }
-  };
+  }, [isAuthenticated]);
   
-  // Place order
-  const placeOrder = async (orderData: {
+  // Place order - using useCallback to memoize the function
+  const placeOrder = useCallback(async (orderData: {
     stock_id: number;
     is_buy: boolean;
     order_type: 'Market' | 'Limit';
@@ -149,35 +223,53 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const response = await stockApi.placeStockOrder(orderData);
       
-      // Refresh data
-      fetchPortfolio();
-      fetchTransactions();
+      console.log('Place order response:', response.data);
       
-      toast.success(`${orderData.is_buy ? 'Buy' : 'Sell'} order placed successfully`);
-      return response.data;
+      // Check if the response was successful
+      if (response.data && response.data.success === true) {
+        // Refresh data
+        fetchPortfolio();
+        fetchTransactions();
+        
+        toast.success(`${orderData.is_buy ? 'Buy' : 'Sell'} order placed successfully`);
+        return response.data.data;
+      } else {
+        const errorMsg = response.data?.error || 'Order placement failed';
+        toast.error(errorMsg);
+        throw new Error(errorMsg);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to place order');
       console.error('Error placing order:', error);
       throw error;
     }
-  };
+  }, [fetchPortfolio, fetchTransactions]);
   
-  // Cancel order
-  const cancelOrder = async (transactionId: number) => {
+  // Cancel order - using useCallback to memoize the function
+  const cancelOrder = useCallback(async (transactionId: number) => {
     try {
       const response = await stockApi.cancelStockTransaction(transactionId);
       
-      // Refresh transactions
-      fetchTransactions();
+      console.log('Cancel order response:', response.data);
       
-      toast.success('Order cancelled successfully');
-      return response.data;
+      // Check if the response was successful
+      if (response.data && response.data.success === true) {
+        // Refresh transactions
+        fetchTransactions();
+        
+        toast.success('Order cancelled successfully');
+        return response.data.data;
+      } else {
+        const errorMsg = response.data?.error || 'Order cancellation failed';
+        toast.error(errorMsg);
+        throw new Error(errorMsg);
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Failed to cancel order');
       console.error('Error cancelling order:', error);
       throw error;
     }
-  };
+  }, [fetchTransactions]);
   
   // Fetch stock prices on mount and periodically
   useEffect(() => {
@@ -189,7 +281,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => {
       clearInterval(stocksInterval);
     };
-  }, []);
+  }, [fetchStocks]);
   
   // Fetch portfolio and transactions when authenticated
   useEffect(() => {
@@ -197,7 +289,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       fetchPortfolio();
       fetchTransactions();
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchPortfolio, fetchTransactions]);
   
   return (
     <StockContext.Provider

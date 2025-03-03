@@ -6,6 +6,7 @@ import LoadingSpinner from '../components/common/LoadingSpinner';
 const TradePage: React.FC = () => {
   const [searchParams] = useSearchParams();
   const stockIdParam = searchParams.get('stockId');
+  const stockSymbolParam = searchParams.get('stockSymbol');
   
   const { stocks, isLoading, fetchStocks, placeOrder } = useStock();
   
@@ -24,6 +25,16 @@ const TradePage: React.FC = () => {
   useEffect(() => {
     fetchStocks();
   }, [fetchStocks]);
+
+  // Set stock by symbol if provided in URL
+  useEffect(() => {
+    if (stockSymbolParam && stocks.length > 0) {
+      const stockWithSymbol = stocks.find(stock => stock.symbol === stockSymbolParam);
+      if (stockWithSymbol) {
+        setOrderData(prev => ({ ...prev, stock_id: stockWithSymbol.id }));
+      }
+    }
+  }, [stockSymbolParam, stocks]);
   
   // Update price when stock or order type changes
   useEffect(() => {
@@ -84,14 +95,9 @@ const TradePage: React.FC = () => {
       setIsSubmitting(true);
       
       // For market orders, don't send a price - let the matching engine determine it
-      const orderPayload = {
-        ...orderData
-      };
-      
-      // Remove price field completely for market orders
-      if (orderData.order_type === 'Market') {
-        delete orderPayload.price;
-      }
+      const orderPayload = orderData.order_type === 'Market'
+        ? { stock_id: orderData.stock_id, is_buy: orderData.is_buy, order_type: orderData.order_type, quantity: orderData.quantity }
+        : { ...orderData };
       
       await placeOrder(orderPayload);
       setSuccess(`${orderData.is_buy ? 'Buy' : 'Sell'} order placed successfully`);
@@ -108,125 +114,236 @@ const TradePage: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+    }).format(amount);
+  };
   
   if (isLoading.stocks) {
     return <LoadingSpinner />;
   }
   
+  const selectedStock = stocks.find(stock => stock.id === orderData.stock_id);
+  
   return (
-    <div className="trade-page">
-      <h1>Trade Stocks</h1>
+    <div className="container mx-auto px-4 py-8">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8 border border-gray-200 dark:border-gray-700">
+        <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Trade Stocks</h1>
+        <p className="text-gray-600 dark:text-gray-300">Place buy and sell orders for stocks</p>
+      </div>
       
-      {error && <div className="error-message">{error}</div>}
-      {success && <div className="success-message">{success}</div>}
-      
-      <form onSubmit={handleSubmit} className="trade-form">
-        <div className="form-group">
-          <label htmlFor="stock">Select Stock</label>
-          <select
-            id="stock"
-            value={orderData.stock_id}
-            onChange={handleStockChange}
-            required
-          >
-            <option value="">Select a stock</option>
-            {stocks.map(stock => (
-              <option key={stock.id} value={stock.id}>
-                {stock.symbol} - {stock.company_name} (${stock.current_price})
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        <div className="form-group">
-          <label>Order Type</label>
-          <div className="radio-group">
-            <label>
-              <input
-                type="radio"
-                name="is_buy"
-                checked={orderData.is_buy}
-                onChange={() => setOrderData(prev => ({ ...prev, is_buy: true }))}
-              />
-              Buy
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="is_buy"
-                checked={!orderData.is_buy}
-                onChange={() => setOrderData(prev => ({ ...prev, is_buy: false }))}
-              />
-              Sell
-            </label>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Order Form */}
+        <div className="lg:col-span-2">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Place an Order</h2>
+            </div>
+            
+            <div className="p-6">
+              {error && (
+                <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-md p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800 dark:text-red-300">{error}</h3>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {success && (
+                <div className="mb-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4">
+                  <div className="flex">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-green-800 dark:text-green-300">{success}</h3>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <form onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 gap-6">
+                  {/* Stock Selection */}
+                  <div>
+                    <label htmlFor="stock" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Stock</label>
+                    <select
+                      id="stock"
+                      value={orderData.stock_id || ''}
+                      onChange={handleStockChange}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      required
+                    >
+                      <option value="">Select a stock</option>
+                      {stocks.map(stock => (
+                        <option key={stock.id} value={stock.id}>
+                          {stock.symbol} - {stock.company_name} ({formatCurrency(stock.current_price)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {/* Order Type (Buy/Sell) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Order Type</label>
+                    <div className="flex space-x-4">
+                      <div className="flex items-center">
+                        <input
+                          id="buy"
+                          name="is_buy"
+                          type="radio"
+                          checked={orderData.is_buy}
+                          onChange={() => setOrderData(prev => ({ ...prev, is_buy: true }))}
+                          className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600"
+                        />
+                        <label htmlFor="buy" className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Buy
+                        </label>
+                      </div>
+                      <div className="flex items-center">
+                        <input
+                          id="sell"
+                          name="is_buy"
+                          type="radio"
+                          checked={!orderData.is_buy}
+                          onChange={() => setOrderData(prev => ({ ...prev, is_buy: false }))}
+                          className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 dark:border-gray-600"
+                        />
+                        <label htmlFor="sell" className="ml-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                          Sell
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Price Type (Market/Limit) */}
+                  <div>
+                    <label htmlFor="order_type" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Price Type</label>
+                    <select
+                      id="order_type"
+                      value={orderData.order_type}
+                      onChange={handleOrderTypeChange}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      required
+                    >
+                      <option value="Market">Market</option>
+                      <option value="Limit">Limit</option>
+                    </select>
+                  </div>
+                  
+                  {/* Quantity */}
+                  <div>
+                    <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Quantity</label>
+                    <input
+                      type="number"
+                      id="quantity"
+                      name="quantity"
+                      min="1"
+                      value={orderData.quantity}
+                      onChange={handleInputChange}
+                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      required
+                    />
+                  </div>
+                  
+                  {/* Price (for Limit orders) */}
+                  {orderData.order_type === 'Limit' && (
+                    <div>
+                      <label htmlFor="price" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Limit Price</label>
+                      <div className="relative rounded-md shadow-sm">
+                        <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                          <span className="text-gray-500 sm:text-sm">$</span>
+                        </div>
+                        <input
+                          type="number"
+                          id="price"
+                          name="price"
+                          min="0.01"
+                          step="0.01"
+                          value={orderData.price}
+                          onChange={handleInputChange}
+                          className="block w-full rounded-md border-gray-300 pl-7 focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                          required
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Submit Button */}
+                  <div>
+                    <button
+                      type="submit"
+                      className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isSubmitting || isLoading.stocks}
+                    >
+                      {isSubmitting ? 'Processing...' : 'Place Order'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
         
-        <div className="form-group">
-          <label htmlFor="order_type">Order Type</label>
-          <select
-            id="order_type"
-            value={orderData.order_type}
-            onChange={handleOrderTypeChange}
-            required
-          >
-            <option value="Market">Market</option>
-            <option value="Limit">Limit</option>
-          </select>
-        </div>
-        
-        <div className="form-group">
-          <label htmlFor="quantity">Quantity</label>
-          <input
-            type="number"
-            id="quantity"
-            name="quantity"
-            min="1"
-            value={orderData.quantity}
-            onChange={handleInputChange}
-            required
-          />
-        </div>
-        
-        {orderData.order_type === 'Limit' && (
-          <div className="form-group">
-            <label htmlFor="price">Price</label>
-            <input
-              type="number"
-              id="price"
-              name="price"
-              min="0.01"
-              step="0.01"
-              value={orderData.price}
-              onChange={handleInputChange}
-              required
-            />
-          </div>
-        )}
-        
-        <div className="form-group">
-          <label>Order Summary</label>
-          <div className="order-summary">
-            <p>
-              {orderData.is_buy ? 'Buy' : 'Sell'} {orderData.quantity} shares of{' '}
-              {stocks.find(s => s.id === orderData.stock_id)?.symbol || 'selected stock'}{' '}
-              at {orderData.order_type === 'Market' ? 'market price' : `$${orderData.price}`}
-            </p>
-            <p className="total-cost">
-              Estimated {orderData.is_buy ? 'cost' : 'proceeds'}: $
-              {(orderData.quantity * orderData.price).toFixed(2)}
-            </p>
+        {/* Order Summary */}
+        <div className="lg:col-span-1">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-white">Order Summary</h2>
+            </div>
+            <div className="p-6">
+              {selectedStock ? (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Stock</h3>
+                    <p className="mt-1 text-lg font-medium text-gray-900 dark:text-white">
+                      {selectedStock.symbol} - {selectedStock.company_name}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Current Price</h3>
+                    <p className="mt-1 text-lg font-medium text-gray-900 dark:text-white">
+                      {formatCurrency(selectedStock.current_price)}
+                    </p>
+                  </div>
+                  
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Order Details</h3>
+                    <p className="mt-1 text-gray-700 dark:text-gray-300">
+                      {orderData.is_buy ? 'Buy' : 'Sell'} {orderData.quantity} shares 
+                      at {orderData.order_type === 'Market' ? 'market price' : formatCurrency(orderData.price)}
+                    </p>
+                  </div>
+                  
+                  <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Total</h3>
+                    <p className="mt-1 text-xl font-bold text-gray-900 dark:text-white">
+                      {formatCurrency(orderData.quantity * (orderData.order_type === 'Market' ? selectedStock.current_price : orderData.price))}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-gray-500 dark:text-gray-400">
+                  Select a stock to see order details
+                </p>
+              )}
+            </div>
           </div>
         </div>
-        
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={isSubmitting || isLoading.stocks}
-        >
-          {isSubmitting ? 'Processing...' : 'Place Order'}
-        </button>
-      </form>
+      </div>
     </div>
   );
 };

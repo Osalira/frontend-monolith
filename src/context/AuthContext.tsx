@@ -45,15 +45,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if user is already logged in
   useEffect(() => {
     const checkAuth = async () => {
-      const storedToken = localStorage.getItem('token');
-      const storedUser = localStorage.getItem('user');
+      try {
+        const storedToken = localStorage.getItem('token');
+        const storedUser = localStorage.getItem('user');
 
-      if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        if (storedToken && storedUser) {
+          console.log('Found stored token and user data');
+          setToken(storedToken);
+          try {
+            const userData = JSON.parse(storedUser);
+            setUser(userData);
+            console.log('Logged in as:', userData.username);
+          } catch (e) {
+            console.error('Failed to parse stored user data:', e);
+            // Invalid user data, clear storage
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+          }
+        } else {
+          console.log('No stored authentication found');
+        }
+      } catch (error) {
+        console.error('Error checking authentication:', error);
+      } finally {
+        setIsLoading(false);
       }
-
-      setIsLoading(false);
     };
 
     checkAuth();
@@ -65,17 +81,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       const response = await authApi.login({ username, password });
       
-      const { token, ...userData } = response.data;
+      // Handle nested response structure
+      const responseData = response.data;
       
-      // Save token and user data
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(userData));
-      
-      setToken(token);
-      setUser(userData);
-      
-      toast.success('Login successful');
+      // The API returns a nested structure with 'data' containing the actual response
+      if (responseData.success && responseData.data) {
+        const { token, account } = responseData.data;
+        
+        if (!token) {
+          throw new Error('Token not found in response');
+        }
+        
+        // Save token and user data
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(account));
+        
+        setToken(token);
+        setUser(account);
+        
+        console.log('Login successful, user data:', account);
+        toast.success('Login successful');
+      } else {
+        throw new Error('Invalid response format from server');
+      }
     } catch (error: any) {
+      console.error('Login error:', error);
       toast.error(error.response?.data?.error || 'Login failed');
       throw error;
     } finally {
@@ -89,16 +119,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       const response = await authApi.register(userData);
       
-      const { token, ...user } = response.data;
+      // Handle nested response structure
+      const responseData = response.data;
       
-      // Save token and user data
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      
-      setToken(token);
-      setUser(user);
-      
-      toast.success('Registration successful');
+      // The API returns a nested structure with 'data' containing the actual response
+      if (responseData.success && responseData.data) {
+        const { token, account } = responseData.data;
+        
+        if (!token) {
+          throw new Error('Token not found in response');
+        }
+        
+        // Save token and user data
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(account));
+        
+        setToken(token);
+        setUser(account);
+        
+        toast.success('Registration successful');
+      } else {
+        throw new Error('Invalid response format from server');
+      }
     } catch (error: any) {
       toast.error(error.response?.data?.error || 'Registration failed');
       throw error;
@@ -136,4 +178,4 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 // Custom hook to use auth context
 export const useAuth = () => useContext(AuthContext);
 
-export default AuthContext; 
+export default AuthContext;

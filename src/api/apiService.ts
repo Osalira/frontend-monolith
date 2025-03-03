@@ -17,10 +17,15 @@ api.interceptors.request.use(
     const token = localStorage.getItem('token');
     if (token && config.headers) {
       config.headers['Authorization'] = `Bearer ${token}`;
+      // Don't log token for security reasons
+      console.log(`Request to ${config.url} with auth token`);
+    } else {
+      console.log(`Request to ${config.url} without auth token`);
     }
     return config;
   },
   (error) => {
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
@@ -28,14 +33,25 @@ api.interceptors.request.use(
 // Response interceptor to handle errors
 api.interceptors.response.use(
   (response) => {
+    console.log(`Response from ${response.config.url}: Status ${response.status}`);
     return response;
   },
   (error: AxiosError) => {
+    console.error('API Error:', error.message, 'URL:', error.config?.url, 'Status:', error.response?.status);
+    
+    // Only redirect to login if we get a 401 from an authenticated endpoint
+    // AND we're not already on the login or register page
     if (error.response?.status === 401) {
-      // Token expired or invalid
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+      const currentPath = window.location.pathname;
+      // Don't redirect if we're already on login or register page
+      if (currentPath !== '/login' && currentPath !== '/register') {
+        console.log('Token expired or invalid, redirecting to login');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        window.location.href = '/login?redirect=' + encodeURIComponent(currentPath);
+      } else {
+        console.log('Received 401 on auth page, not redirecting');
+      }
     }
     return Promise.reject(error);
   }
@@ -80,8 +96,9 @@ export const stockApi = {
     return api.post('/engine/placeStockOrder', orderData);
   },
   
-  cancelStockTransaction: async (transactionId: number): Promise<AxiosResponse> => {
-    return api.post('/engine/cancelStockTransaction', { transaction_id: transactionId });
+  cancelStockTransaction: async (transactionId: number | string): Promise<AxiosResponse> => {
+    console.log(`Cancelling transaction ${transactionId} (${typeof transactionId})`);
+    return api.post('/engine/cancelStockTransaction', { transaction_id: transactionId.toString() });
   },
 };
 

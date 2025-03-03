@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "cypress:open": "cypress open",
     "cypress:run": "cypress run",
+    "tailwind:init": "node node_modules/tailwindcss/dist/lib.js init -p",
     "test:e2e": "start-server-and-test dev http://localhost:3000 cypress:run",
     "test:e2e:open": "start-server-and-test dev http://localhost:3000 cypress:open"
   },
@@ -27,6 +28,7 @@
     "react-query": "^3.39.3",
     "react-router-dom": "^6.22.0",
     "react-toastify": "^11.0.5",
+    "tailwindcss": "^3.3.5",
     "ws": "^8.18.0",
     "zustand": "^5.0.3"
   },
@@ -38,10 +40,12 @@
     "@typescript-eslint/eslint-plugin": "^6.21.0",
     "@typescript-eslint/parser": "^6.21.0",
     "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.20",
     "cypress": "^14.0.3",
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "postcss": "^8.5.3",
     "start-server-and-test": "^2.0.10",
     "typescript": "^5.2.2",
     "vite": "^5.1.0"
