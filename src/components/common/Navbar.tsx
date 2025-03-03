@@ -70,6 +70,9 @@ const Navbar: React.FC = () => {
                 <Link to="/trade" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400">Trade</Link>
                 <Link to="/wallet" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400">Wallet</Link>
                 <Link to="/transactions" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400">Transactions</Link>
+                {user?.account_type === 'company' && (
+                  <Link to="/admin" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 font-medium">Admin</Link>
+                )}
                 
                 <div className="ml-4 flex items-center">
                   <span className="mr-2 text-gray-700 dark:text-gray-300">{user?.name || user?.username}</span>
@@ -100,6 +103,9 @@ const Navbar: React.FC = () => {
                 <Link to="/trade" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400">Trade</Link>
                 <Link to="/wallet" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400">Wallet</Link>
                 <Link to="/transactions" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400">Transactions</Link>
+                {user?.account_type === 'company' && (
+                  <Link to="/admin" className="px-3 py-2 text-gray-700 hover:text-blue-600 dark:text-gray-300 dark:hover:text-blue-400 font-medium">Admin</Link>
+                )}
                 
                 <div className="flex flex-col px-3 py-2">
                   <span className="mb-2 text-gray-700 dark:text-gray-300">{user?.name || user?.username}</span>

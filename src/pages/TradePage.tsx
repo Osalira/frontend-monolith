@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useStock } from '../context/StockContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -9,6 +9,12 @@ const TradePage: React.FC = () => {
   const stockSymbolParam = searchParams.get('stockSymbol');
   
   const { stocks, isLoading, fetchStocks, placeOrder } = useStock();
+  
+  // Add search state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [filteredStocks, setFilteredStocks] = useState<Array<any>>([]);
+  const searchRef = useRef<HTMLDivElement>(null);
   
   const [orderData, setOrderData] = useState({
     stock_id: stockIdParam ? parseInt(stockIdParam) : 0,
@@ -31,24 +37,69 @@ const TradePage: React.FC = () => {
     if (stockSymbolParam && stocks.length > 0) {
       const stockWithSymbol = stocks.find(stock => stock.symbol === stockSymbolParam);
       if (stockWithSymbol) {
-        setOrderData(prev => ({ ...prev, stock_id: stockWithSymbol.id }));
+        setOrderData(prev => ({ ...prev, stock_id: stockWithSymbol.stock_id }));
+        setSearchTerm(`${stockWithSymbol.symbol} - ${stockWithSymbol.stock_name || stockWithSymbol.company_name}`);
       }
     }
   }, [stockSymbolParam, stocks]);
   
+  // Handle clicks outside the suggestions dropdown to close it
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [searchRef]);
+  
+  // Update filtered stocks when search term changes
+  useEffect(() => {
+    if (searchTerm.trim() === '') {
+      setFilteredStocks([]);
+      return;
+    }
+    
+    const lowercasedFilter = searchTerm.toLowerCase();
+    const filtered = stocks.filter(stock => {
+      const symbolMatch = stock.symbol.toLowerCase().includes(lowercasedFilter);
+      const nameMatch = (stock.stock_name || stock.company_name || '')
+        .toLowerCase()
+        .includes(lowercasedFilter);
+      return symbolMatch || nameMatch;
+    }).slice(0, 10); // Limit to 10 results
+    
+    setFilteredStocks(filtered);
+  }, [searchTerm, stocks]);
+  
   // Update price when stock or order type changes
   useEffect(() => {
     if (orderData.stock_id && orderData.order_type === 'Market') {
-      const selectedStock = stocks.find(stock => stock.id === orderData.stock_id);
+      const selectedStock = stocks.find(stock => stock.stock_id === orderData.stock_id);
       if (selectedStock) {
         setOrderData(prev => ({ ...prev, price: selectedStock.current_price }));
       }
     }
   }, [orderData.stock_id, orderData.order_type, stocks]);
   
-  const handleStockChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const stockId = parseInt(e.target.value);
-    setOrderData(prev => ({ ...prev, stock_id: stockId }));
+  // Replace handleStockChange with a function to handle stock selection from suggestions
+  const handleStockSelect = (stock: any) => {
+    setOrderData(prev => ({ ...prev, stock_id: stock.stock_id }));
+    setSearchTerm(`${stock.symbol} - ${stock.stock_name || stock.company_name}`);
+    setShowSuggestions(false);
+  };
+  
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+    setShowSuggestions(true);
+    
+    // Clear the selected stock if search input is emptied
+    if (e.target.value.trim() === '') {
+      setOrderData(prev => ({ ...prev, stock_id: 0 }));
+    }
   };
   
   const handleOrderTypeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -126,7 +177,7 @@ const TradePage: React.FC = () => {
     return <LoadingSpinner />;
   }
   
-  const selectedStock = stocks.find(stock => stock.id === orderData.stock_id);
+  const selectedStock = stocks.find(stock => stock.stock_id === orderData.stock_id);
   
   return (
     <div className="container mx-auto px-4 py-8">
@@ -176,23 +227,57 @@ const TradePage: React.FC = () => {
               
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-1 gap-6">
-                  {/* Stock Selection */}
-                  <div>
-                    <label htmlFor="stock" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Select Stock</label>
-                    <select
-                      id="stock"
-                      value={orderData.stock_id || ''}
-                      onChange={handleStockChange}
-                      className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                      required
-                    >
-                      <option value="">Select a stock</option>
-                      {stocks.map(stock => (
-                        <option key={stock.id} value={stock.id}>
-                          {stock.symbol} - {stock.company_name} ({formatCurrency(stock.current_price)})
-                        </option>
-                      ))}
-                    </select>
+                  {/* Stock Selection - Autocomplete */}
+                  <div ref={searchRef} className="relative">
+                    <label htmlFor="stock-search" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Search for Stock
+                    </label>
+                    <div className="relative">
+                      <input
+                        id="stock-search"
+                        type="text"
+                        value={searchTerm}
+                        onChange={handleSearchChange}
+                        onFocus={() => setShowSuggestions(true)}
+                        placeholder="Type to search for a stock..."
+                        className={`block w-full rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white pl-3 pr-10 py-2 ${orderData.stock_id > 0 ? 'border-green-300 dark:border-green-600' : 'border-gray-300 dark:border-gray-600'}`}
+                        required
+                      />
+                      {orderData.stock_id > 0 && (
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                          <svg className="h-5 w-5 text-green-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      )}
+                    </div>
+                    {showSuggestions && filteredStocks.length > 0 && (
+                      <ul className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg max-h-60 rounded-md py-1 text-base overflow-auto focus:outline-none sm:text-sm border border-gray-200 dark:border-gray-700">
+                        {filteredStocks.map((stock) => (
+                          <li
+                            key={stock.stock_id}
+                            onClick={() => handleStockSelect(stock)}
+                            className={`cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 px-4 py-2 text-gray-900 dark:text-white ${orderData.stock_id === stock.stock_id ? 'bg-blue-50 dark:bg-blue-900/30' : ''}`}
+                          >
+                            <div className="flex justify-between">
+                              <span className="font-medium">{stock.symbol}</span>
+                              <span className="text-gray-500 dark:text-gray-400">{formatCurrency(stock.current_price)}</span>
+                            </div>
+                            <div className="text-sm text-gray-500 dark:text-gray-400 truncate">{stock.stock_name || stock.company_name}</div>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {searchTerm && filteredStocks.length === 0 && showSuggestions && (
+                      <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 shadow-lg rounded-md py-2 px-4 border border-gray-200 dark:border-gray-700">
+                        <p className="text-gray-500 dark:text-gray-400">No stocks found</p>
+                      </div>
+                    )}
+                    {orderData.stock_id > 0 && (
+                      <div className="mt-1 text-sm text-green-600 dark:text-green-400">
+                        Selected stock: {selectedStock?.symbol} - {formatCurrency(selectedStock?.current_price || 0)}
+                      </div>
+                    )}
                   </div>
                   
                   {/* Order Type (Buy/Sell) */}

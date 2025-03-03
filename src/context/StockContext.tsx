@@ -5,9 +5,11 @@ import { toast } from 'react-toastify';
 
 // Types
 export interface Stock {
-  id: number;
+  id?: number;
+  stock_id: number;
   symbol: string;
-  company_name: string;
+  company_name?: string;
+  stock_name: string;
   current_price: number;
   updated_at: string;
 }
@@ -36,6 +38,7 @@ export interface StockTransaction {
   timestamp: string;
   parent_id?: number;
   wallet_transaction_id?: number;
+  stock_tx_id?: number;
 }
 
 // Context Type
@@ -106,14 +109,35 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const responseData = response.data.data;
         
         if (Array.isArray(responseData)) {
-          setStocks(responseData);
+          // Map the response to our Stock interface, ensuring backward compatibility
+          const stocksData = responseData.map(stock => ({
+            id: stock.stock_id, // Map stock_id to id for backward compatibility
+            stock_id: Number(stock.stock_id),
+            symbol: stock.symbol,
+            company_name: stock.stock_name || stock.company_name, // Map stock_name to company_name for backward compatibility
+            stock_name: stock.stock_name || stock.company_name,
+            current_price: Number(stock.current_price) || 0,
+            updated_at: stock.updated_at || new Date().toISOString()
+          }));
+          console.log('Processed stocks data:', stocksData);
+          setStocks(stocksData);
         } else {
           console.error('Unexpected stocks data format:', responseData);
           setStocks([]);
         }
       } else if (Array.isArray(response.data)) {
         // Fallback for direct array responses
-        setStocks(response.data);
+        const stocksData = response.data.map(stock => ({
+          id: stock.stock_id || stock.id,
+          stock_id: Number(stock.stock_id || stock.id),
+          symbol: stock.symbol,
+          company_name: stock.stock_name || stock.company_name,
+          stock_name: stock.stock_name || stock.company_name,
+          current_price: Number(stock.current_price) || 0,
+          updated_at: stock.updated_at || new Date().toISOString()
+        }));
+        console.log('Processed stocks data (direct array):', stocksData);
+        setStocks(stocksData);
       } else {
         console.error('Invalid stocks response format:', response.data);
         setStocks([]);
@@ -186,21 +210,49 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (response.data && response.data.success === true) {
         const responseData = response.data.data;
         
+        let transactionsData = [];
+        
         if (responseData && Array.isArray(responseData.transactions)) {
           // Nested transactions array
-          setTransactions(responseData.transactions);
+          transactionsData = responseData.transactions;
         } else if (Array.isArray(responseData)) {
           // Direct array of transactions
-          setTransactions(responseData);
+          transactionsData = responseData;
         } else {
           console.error('Unexpected transactions data format:', responseData);
           setTransactions([]);
+          return;
         }
-      } else if (response.data && Array.isArray(response.data.transactions)) {
-        // Legacy format with transactions at top level
-        setTransactions(response.data.transactions);
+        
+        // Map and normalize transaction data to ensure consistency
+        const processedTransactions = transactionsData.map((tx: any) => {
+          // Find the corresponding stock to get its symbol if not provided
+          const stockId = Number(tx.stock_id);
+          const matchingStock = stocks.find(s => s.stock_id === stockId);
+          const stockSymbol = tx.stock_symbol || (matchingStock ? matchingStock.symbol : `Stock-${stockId}`);
+          
+          // Map API response fields to our interface
+          return {
+            id: tx.id || tx.stock_tx_id || 0, // Fall back to stock_tx_id if id is not present
+            stock_tx_id: tx.stock_tx_id, // Keep the original stock_tx_id
+            user_id: Number(tx.user_id) || 0,
+            stock: stockId || tx.stock || 0,
+            stock_symbol: stockSymbol,
+            is_buy: tx.is_buy === true || tx.is_buy === 'true' || false,
+            order_type: tx.order_type || '',
+            status: tx.status || tx.order_status || 'Pending', // Map order_status to status
+            quantity: Number(tx.quantity) || 0,
+            price: Number(tx.price || tx.stock_price) || 0,
+            timestamp: tx.timestamp || new Date().toISOString(),
+            parent_id: tx.parent_id || tx.parent_stock_tx_id || undefined,
+            wallet_transaction_id: tx.wallet_transaction_id || tx.wallet_tx_id || undefined
+          };
+        });
+        
+        console.log('Processed transactions:', processedTransactions);
+        setTransactions(processedTransactions);
       } else {
-        console.error('Invalid transactions response format:', response.data);
+        console.error('Failed to fetch transactions:', response.data);
         setTransactions([]);
       }
     } catch (error: any) {
@@ -210,7 +262,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } finally {
       setIsLoading(prev => ({ ...prev, transactions: false }));
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, stocks]);
   
   // Place order - using useCallback to memoize the function
   const placeOrder = useCallback(async (orderData: {
@@ -221,6 +273,9 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     price?: number;
   }) => {
     try {
+      // Log the order data being sent
+      console.log('Placing order with data:', orderData);
+      
       const response = await stockApi.placeStockOrder(orderData);
       
       console.log('Place order response:', response.data);
@@ -248,6 +303,7 @@ export const StockProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Cancel order - using useCallback to memoize the function
   const cancelOrder = useCallback(async (transactionId: number) => {
     try {
+      console.log(`Attempting to cancel transaction ID: ${transactionId}`);
       const response = await stockApi.cancelStockTransaction(transactionId);
       
       console.log('Cancel order response:', response.data);

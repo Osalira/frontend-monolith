@@ -16,6 +16,7 @@ import PortfolioPage from './pages/PortfolioPage';
 import TradePage from './pages/TradePage';
 import WalletPage from './pages/WalletPage';
 import TransactionsPage from './pages/TransactionsPage';
+import AdminPage from './pages/AdminPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 // Context
@@ -78,6 +79,15 @@ const App: React.FC = () => {
                         element={
                           <ProtectedRoute>
                             <TransactionsPage />
+                          </ProtectedRoute>
+                        } 
+                      />
+                      
+                      <Route 
+                        path="/admin" 
+                        element={
+                          <ProtectedRoute>
+                            <AdminPage />
                           </ProtectedRoute>
                         } 
                       />

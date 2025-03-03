@@ -93,7 +93,18 @@ export const stockApi = {
     quantity: number;
     price?: number;
   }): Promise<AxiosResponse> => {
-    return api.post('/engine/placeStockOrder', orderData);
+    // Include token in request body and uppercase order_type for Test Run-1 compatibility
+    const token = localStorage.getItem('token');
+    const payload = {
+      token,
+      stock_id: orderData.stock_id,
+      is_buy: orderData.is_buy,
+      order_type: orderData.order_type.toUpperCase(), // Convert to uppercase (MARKET/LIMIT)
+      quantity: orderData.quantity,
+      price: orderData.price
+    };
+    console.log('Placing stock order with payload:', payload);
+    return api.post('/engine/placeStockOrder', payload);
   },
   
   cancelStockTransaction: async (transactionId: number | string): Promise<AxiosResponse> => {
@@ -113,28 +124,27 @@ export const walletApi = {
   },
   
   addMoneyToWallet: async (amount: number): Promise<AxiosResponse> => {
-    return api.post('/transaction/addMoneyToWallet', { amount });
+    // Include token in request body for Test Run-1 compatibility
+    const token = localStorage.getItem('token');
+    console.log('Adding money to wallet with token and amount:', { token, amount });
+    return api.post('/transaction/addMoneyToWallet', { token, amount });
   },
 };
 
 // Admin API (for setup)
 export const adminApi = {
   createStock: async (stockData: {
-    symbol: string;
-    company_name: string;
-    current_price: number;
-    total_shares?: number;
-    available_shares?: number;
+    stock_name: string;
   }): Promise<AxiosResponse> => {
+    console.log('Creating stock with data:', stockData);
     return api.post('/setup/createStock', stockData);
   },
   
   addStockToUser: async (data: {
-    target_user_id: number;
     stock_id: number;
     quantity: number;
-    price: number;
   }): Promise<AxiosResponse> => {
+    console.log('Adding stock to user with data:', data);
     return api.post('/setup/addStockToUser', data);
   },
 };

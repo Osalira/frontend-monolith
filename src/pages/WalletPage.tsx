@@ -4,7 +4,8 @@ import { walletApi } from '../api/apiService';
 import LoadingSpinner from '../components/common/LoadingSpinner';
 
 interface WalletTransaction {
-  id: number | string;
+  id?: number | string;
+  wallet_tx_id?: number | string;
   amount: number | string;
   timestamp: string;
   transaction_type: string;
@@ -59,15 +60,41 @@ const WalletPage: React.FC = () => {
       // Handle different response formats
       if (transactionsResponse.data && transactionsResponse.data.success === true) {
         if (Array.isArray(transactionsResponse.data.data)) {
-          transactions = transactionsResponse.data.data;
+          // Process each transaction to ensure it has a usable ID
+          transactions = transactionsResponse.data.data.map((tx: any) => ({
+            ...tx,
+            // Make sure we have an id property (use wallet_tx_id as fallback)
+            id: tx.id || tx.wallet_tx_id,
+            // Ensure status exists
+            status: tx.status || 'Completed',
+            // Ensure transaction_type exists
+            transaction_type: tx.transaction_type || (tx.is_debit ? 'Withdrawal' : 'Deposit')
+          }));
         } else if (transactionsResponse.data.data && Array.isArray(transactionsResponse.data.data.transactions)) {
-          transactions = transactionsResponse.data.data.transactions;
+          transactions = transactionsResponse.data.data.transactions.map((tx: any) => ({
+            ...tx,
+            id: tx.id || tx.wallet_tx_id,
+            status: tx.status || 'Completed',
+            transaction_type: tx.transaction_type || (tx.is_debit ? 'Withdrawal' : 'Deposit')
+          }));
         }
       } else if (Array.isArray(transactionsResponse.data)) {
-        transactions = transactionsResponse.data;
+        transactions = transactionsResponse.data.map((tx: any) => ({
+          ...tx,
+          id: tx.id || tx.wallet_tx_id,
+          status: tx.status || 'Completed',
+          transaction_type: tx.transaction_type || (tx.is_debit ? 'Withdrawal' : 'Deposit')
+        }));
       } else if (transactionsResponse.data && Array.isArray(transactionsResponse.data.transactions)) {
-        transactions = transactionsResponse.data.transactions;
+        transactions = transactionsResponse.data.transactions.map((tx: any) => ({
+          ...tx,
+          id: tx.id || tx.wallet_tx_id,
+          status: tx.status || 'Completed',
+          transaction_type: tx.transaction_type || (tx.is_debit ? 'Withdrawal' : 'Deposit')
+        }));
       }
+      
+      console.log('Processed transactions:', transactions);
       
       setWalletData({
         balance,
@@ -95,7 +122,11 @@ const WalletPage: React.FC = () => {
     
     try {
       setIsSubmitting(true);
-      const response = await walletApi.addMoneyToWallet(parseFloat(depositAmount));
+      const amount = parseFloat(depositAmount);
+      console.log(`Adding ${amount} to wallet`);
+      
+      const response = await walletApi.addMoneyToWallet(amount);
+      console.log('Add money response:', response.data);
       
       if (response.data && response.data.success) {
         toast.success('Funds added successfully');
@@ -106,6 +137,7 @@ const WalletPage: React.FC = () => {
       }
     } catch (error: any) {
       toast.error(error.message || 'Failed to add funds');
+      console.error('Error adding funds:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -249,8 +281,11 @@ const WalletPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                    {walletData.transactions.map((transaction) => (
-                      <tr key={transaction.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    {walletData.transactions.map((transaction, index) => (
+                      <tr 
+                        key={transaction.wallet_tx_id || transaction.id || `transaction-${index}`} 
+                        className="hover:bg-gray-50 dark:hover:bg-gray-700"
+                      >
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                           {formatDate(transaction.timestamp)}
                         </td>

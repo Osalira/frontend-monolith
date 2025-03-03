@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useStock } from '../context/StockContext';
 import LoadingSpinner from '../components/common/LoadingSpinner';
+// import { toast } from 'react-toastify';
 
 const TransactionsPage: React.FC = () => {
-  const { transactions, isLoading, fetchTransactions } = useStock();
+  const { transactions, isLoading, fetchTransactions, cancelOrder } = useStock();
   const [pageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [cancelInProgress, setCancelInProgress] = useState<number | null>(null);
   
   // Fetch transactions when component mounts or when page changes
   useEffect(() => {
@@ -35,6 +37,18 @@ const TransactionsPage: React.FC = () => {
         return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
+    }
+  };
+
+  const handleCancelOrder = async (transactionId: number) => {
+    try {
+      setCancelInProgress(transactionId);
+      await cancelOrder(transactionId);
+      // The toast is handled by the cancelOrder function
+    } catch (error) {
+      console.error('Failed to cancel order:', error);
+    } finally {
+      setCancelInProgress(null);
     }
   };
   
@@ -77,11 +91,12 @@ const TransactionsPage: React.FC = () => {
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Price</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Total</th>
                   <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Status</th>
+                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                {transactions.map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                {transactions.map((transaction, index) => (
+                  <tr key={transaction.stock_tx_id || transaction.id || `transaction-${index}`} className="hover:bg-gray-50 dark:hover:bg-gray-700">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">{formatDate(transaction.timestamp)}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
                       <span className={`inline-flex px-2 py-1 rounded-full ${transaction.is_buy ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'}`}>
@@ -96,6 +111,22 @@ const TransactionsPage: React.FC = () => {
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusClass(transaction.status)}`}>
                         {transaction.status}
                       </span>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-300">
+                      {(transaction.status === 'Pending' || transaction.status === 'Partially_complete' || transaction.status === 'IN_PROGRESS') && (
+                        <button
+                          onClick={() => handleCancelOrder(transaction.stock_tx_id || transaction.id)}
+                          disabled={cancelInProgress === (transaction.stock_tx_id || transaction.id)}
+                          className="inline-flex items-center px-2.5 py-1.5 border border-transparent text-xs font-medium rounded text-red-700 bg-red-100 hover:bg-red-200 dark:text-red-300 dark:bg-red-900/30 dark:hover:bg-red-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {cancelInProgress === (transaction.stock_tx_id || transaction.id) ? (
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-red-700 dark:text-red-300" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : 'Cancel'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
