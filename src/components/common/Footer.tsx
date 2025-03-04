@@ -1,9 +1,9 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+// import { Link } from 'react-router-dom';
+// import { useAuth } from '../../context/AuthContext';
 
 const Footer: React.FC = () => {
-  const { isAuthenticated } = useAuth();
+  // const { isAuthenticated } = useAuth();
   const currentYear = new Date().getFullYear();
   
   return (
