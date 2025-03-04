@@ -30,12 +30,25 @@ COPY --from=build /app/dist /usr/share/nginx/html
 # Copy custom nginx config
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy a startup script to handle environment variables at runtime
-COPY docker-entrypoint.sh /
-RUN chmod +x /docker-entrypoint.sh
+# Remove the entrypoint script - we'll use inline commands instead
+# COPY docker-entrypoint.sh /
+# RUN chmod +x /docker-entrypoint.sh
 
 # Expose port 80
 EXPOSE 80
 
-# Use the entrypoint script to start Nginx
-ENTRYPOINT ["/docker-entrypoint.sh"] 
+# Use inline commands to replace the entrypoint script functionality
+CMD bash -c '\
+    APP_DIR=/usr/share/nginx/html && \
+    echo "Injecting environment variables..." && \
+    if [ -n "$VITE_API_URL" ]; then \
+        echo "Setting API URL: $VITE_API_URL" && \
+        find $APP_DIR -type f -name "*.js" -exec sed -i "s|VITE_API_URL_PLACEHOLDER|$VITE_API_URL|g" {} \; ; \
+    fi && \
+    if [ -n "$VITE_WS_URL" ]; then \
+        echo "Setting WebSocket URL: $VITE_WS_URL" && \
+        find $APP_DIR -type f -name "*.js" -exec sed -i "s|VITE_WS_URL_PLACEHOLDER|$VITE_WS_URL|g" {} \; ; \
+    fi && \
+    echo "Environment variable injection complete." && \
+    echo "Starting Nginx..." && \
+    nginx -g "daemon off;"' 
